@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>방위각 계산기 & 날씨 정보</title>
   <style>
-    /* 기본 모바일 최적화 스타일링 */
+    /* 모바일 가독성을 높인 직관적인 UI 스타일링 */
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
@@ -26,6 +26,7 @@
       border-bottom: 2px solid #3498db;
       padding-bottom: 8px;
       color: #2c3e50;
+      font-size: 18px;
     }
     .section {
       margin-bottom: 25px;
@@ -36,20 +37,29 @@
     label {
       display: block;
       font-weight: bold;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
+      font-size: 14px;
     }
     input[type="text"] {
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       box-sizing: border-box;
-      border: 1px solid #ccc;
+      border: 1px solid #ccd1d9;
       border-radius: 6px;
       font-size: 14px;
+      background-color: #f8f9fa;
     }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #3498db;
+      background-color: #fff;
+    }
+    
+    /* 버튼 스타일 조정 (모바일 터치 영역 확보) */
     .btn-row {
       display: flex;
-      gap: 10px;
-      margin-top: 10px;
+      gap: 8px;
+      margin-top: 8px;
     }
     button {
       flex: 1;
@@ -66,11 +76,19 @@
       color: white;
     }
     .btn-primary:hover { background-color: #2980b9; }
-    .btn-sub {
-      background-color: #95a5a6;
+    
+    .btn-save {
+      background-color: #2ecc71;
       color: white;
     }
-    
+    .btn-save:hover { background-color: #27ae60; }
+
+    .btn-clear {
+      background-color: #e74c3c;
+      color: white;
+    }
+    .btn-clear:hover { background-color: #c0392b; }
+
     /* 지도 영역 */
     #map {
       width: 100%;
@@ -78,22 +96,25 @@
       background-color: #e9ecef;
       border-radius: 8px;
       margin-top: 15px;
-      display: none; /* 지도가 생성되면 보임 */
+      display: none; /* 지도가 생성되면 표시됨 */
+      border: 1px solid #ccd1d9;
     }
 
-    /* 설정 탭 및 알림 메시지 */
+    /* 설정 영역 */
     .setting-group {
       background: #f8f9fa;
       padding: 15px;
       border-radius: 8px;
-      border: 1px solid #e9ecef;
+      border: 1px solid #e6e9ed;
       margin-top: 15px;
     }
+    
+    /* 피드백 메시지 */
     .alert-msg {
       display: block;
-      font-size: 12px;
-      margin-top: 5px;
-      height: 16px;
+      font-size: 13px;
+      margin-top: 8px;
+      height: 18px;
       transition: opacity 0.3s ease;
       opacity: 0;
       font-weight: bold;
@@ -101,6 +122,7 @@
     .alert-msg.show {
       opacity: 1;
     }
+    
     .result-box {
       background: #edf2f7;
       padding: 15px;
@@ -108,6 +130,13 @@
       margin-top: 15px;
       font-family: monospace;
       white-space: pre-line;
+      font-size: 13px;
+    }
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e6e9ed;
+      margin: 20px 0;
     }
   </style>
   
@@ -121,7 +150,7 @@
     <h2>방위각 계산 및 지도 확인</h2>
     <div class="input-group">
       <label for="search-address">주소 입력</label>
-      <input type="text" id="search-address" placeholder="주소 검색 버튼을 눌러주세요" readonly />
+      <input type="text" id="search-address" placeholder="아래 주소 검색 버튼을 눌러주세요" readonly />
       <div class="btn-row">
         <button class="btn-primary" onclick="openPostcode()">주소 검색</button>
       </div>
@@ -152,8 +181,8 @@
       <label for="kakao-key">카카오 JavaScript API 키</label>
       <input type="text" id="kakao-key" placeholder="JavaScript 키를 입력하세요" />
       <div class="btn-row">
-        <button class="btn-primary" onclick="saveApiKey('kakao')">저장</button>
-        <button class="btn-sub" onclick="clearApiKey('kakao')">초기화</button>
+        <button class="btn-save" onclick="saveApiKey('kakao')">저장</button>
+        <button class="btn-clear" onclick="clearApiKey('kakao')">초기화</button>
       </div>
       <span id="kakao-alert" class="alert-msg"></span>
     </div>
@@ -162,8 +191,8 @@
       <label for="weather-key">기상청 단기예보 일반인증키</label>
       <input type="text" id="weather-key" placeholder="일반인증키를 입력하세요" />
       <div class="btn-row">
-        <button class="btn-primary" onclick="saveApiKey('weather')">저장</button>
-        <button class="btn-sub" onclick="clearApiKey('weather')">초기화</button>
+        <button class="btn-save" onclick="saveApiKey('weather')">저장</button>
+        <button class="btn-clear" onclick="clearApiKey('weather')">초기화</button>
       </div>
       <span id="weather-alert" class="alert-msg"></span>
     </div>
@@ -172,25 +201,24 @@
 </div>
 
 <script>
-  // 저장된 좌표 정보 임시 저장용 변수
   let currentLat = null;
   let currentLng = null;
 
-  // 페이지 로드 시 로컬 스토리지에서 키 가져와서 채워넣기
+  // 페이지 실행 시 로컬 스토리지 데이터 동기화
   window.onload = function() {
     const savedKakao = localStorage.getItem('kakao_api_key');
     const savedWeather = localStorage.getItem('weather_api_key');
 
     if (savedKakao) {
       document.getElementById('kakao-key').value = savedKakao;
-      loadKakaoMapSDK(savedKakao); // 카카오 지도 엔진 로드
+      loadKakaoMapSDK(savedKakao); // 지도 엔진 로드
     }
     if (savedWeather) {
       document.getElementById('weather-key').value = savedWeather;
     }
   }
 
-  // [설정] API 키 각각 저장하기
+  // [설정] 개별 저장 기능
   function saveApiKey(type) {
     const inputElement = document.getElementById(`${type}-key`);
     const alertElement = document.getElementById(`${type}-alert`);
@@ -211,15 +239,22 @@
     }
   }
 
-  // [설정] API 키 각각 초기화하기
+  // [설정] 개별 초기화 기능
   function clearApiKey(type) {
     const inputElement = document.getElementById(`${type}-key`);
     const alertElement = document.getElementById(`${type}-alert`);
 
     inputElement.value = '';
     localStorage.removeItem(`${type}_api_key`);
-    alertElement.style.color = '#95a5a6';
+    alertElement.style.color = '#e74c3c';
     showAlert(alertElement, "초기화되었습니다.");
+
+    // 카카오 키 초기화 시 기존 로드된 지도 스크립트도 제거
+    if (type === 'kakao') {
+      const existingScript = document.getElementById('kakao-map-script');
+      if (existingScript) existingScript.remove();
+      document.getElementById('map').style.display = 'none';
+    }
   }
 
   function showAlert(element, message) {
@@ -227,10 +262,10 @@
     element.classList.add('show');
     setTimeout(() => {
       element.classList.remove('show');
-    }, 2000);
+    }, 2500);
   }
 
-  // 카카오 지도 SDK 동적 로딩 함수 (services 라이브러리 추가가 핵심!)
+  // 카카오 지도 엔진 로딩 함수
   function loadKakaoMapSDK(apiKey) {
     const existingScript = document.getElementById('kakao-map-script');
     if (existingScript) {
@@ -240,44 +275,40 @@
     const script = document.createElement('script');
     script.id = 'kakao-map-script';
     script.type = 'text/javascript';
-    // &libraries=services 옵션을 추가하여 주소->좌표 변환기(Geocoder)를 사용할 수 있게 합니다.
+    // 라이브러리에 services(좌표변환기)를 반드시 명시합니다.
     script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services&autoload=false`;
     
     script.onload = () => {
       kakao.maps.load(() => {
-        console.log("카카오맵 SDK (서비스 라이브러리 포함) 로드 성공");
+        console.log("카카오 맵 SDK 로드 완료");
       });
+    };
+    script.onerror = () => {
+      console.error("카카오 맵 SDK 로드 실패. API 키를 확인해 주세요.");
     };
     document.head.appendChild(script);
   }
 
-  // 카카오 주소 검색 서비스 실행 함수
+  // 주소 검색 버튼 작동 함수 (카카오 키 등록 여부와 상관없이 무조건 주소창이 뜸)
   function openPostcode() {
-    // 카카오 지도 SDK 등록 여부 우선 체크
-    if (!localStorage.getItem('kakao_api_key')) {
-      alert("먼저 설정 탭에서 카카오 JavaScript 키를 등록하고 저장해 주세요!");
-      return;
-    }
-
     new daum.Postcode({
       oncomplete: function(data) {
-        const roadAddr = data.roadAddress; // 도로명 주소
+        const roadAddr = data.roadAddress; // 선택한 도로명 주소
         document.getElementById('search-address').value = roadAddr;
 
-        // 주소를 좌표(위도, 경도)로 바꾸어 상세 주소 칸에 입력하고 지도를 띄웁니다.
-        convertAddressToCoords(roadAddr);
+        // 카카오 지도 키가 입력되어 있을 때만 위경도 좌표 변환을 시도합니다.
+        const savedKakao = localStorage.getItem('kakao_api_key');
+        if (savedKakao && typeof kakao !== 'undefined' && kakao.maps && kakao.maps.services) {
+          convertAddressToCoords(roadAddr);
+        } else {
+          document.getElementById('detail-address').value = "카카오 JavaScript 키가 없거나 저장되지 않아 좌표를 불러올 수 없습니다.";
+        }
       }
     }).open();
   }
 
-  // 도로명 주소를 좌표(위경도)로 변환하고 지도 띄우기
+  // 주소를 위경도 좌표로 변환하고 지도 띄우기
   function convertAddressToCoords(address) {
-    // 동적으로 불러온 kakao 객체가 준비되었는지 확인
-    if (typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services) {
-      alert("카카오 지도 라이브러리가 로딩 중이거나 키가 잘못되었습니다. 잠시 후 다시 시도해 주세요.");
-      return;
-    }
-
     const geocoder = new kakao.maps.services.Geocoder();
 
     geocoder.addressSearch(address, function(result, status) {
@@ -285,21 +316,21 @@
         currentLat = result[0].y; // 위도
         currentLng = result[0].x; // 경도
 
-        // 상세 정보 입력란에 위도 경도 좌표 표시
+        // 좌표 정보 표시
         document.getElementById('detail-address').value = `위도: ${currentLat} / 경도: ${currentLng}`;
 
-        // 지도 영역을 눈에 보이게 설정한 후 지도 그리기
+        // 지도 띄우기
         const mapContainer = document.getElementById('map');
         mapContainer.style.display = 'block';
 
         displayKakaoMap(currentLat, currentLng);
       } else {
-        alert("주소 좌표 변환에 실패했습니다. 올바른 키값 및 플랫폼 설정 상태를 확인해 주세요.");
+        alert("좌표 변환 실패: 카카오 개발자 콘솔의 플랫폼 도메인 설정을 확인해 주세요.");
       }
     });
   }
 
-  // 화면에 카카오 지도 출력
+  // 실제 지도 렌더링 함수
   function displayKakaoMap(lat, lng) {
     kakao.maps.load(() => {
       const container = document.getElementById('map');
@@ -312,19 +343,18 @@
 
       const map = new kakao.maps.Map(container, options);
 
-      // 마커 표시
+      // 마커 추가
       const marker = new kakao.maps.Marker({
         map: map,
         position: coords
       });
 
-      // 모바일 환경에서 지도 크기 변경 시 중심축이 어긋나는 것을 방지
       map.relayout();
       map.setCenter(coords);
     });
   }
 
-  // 기상청 예보 정보 호출 기능
+  // 기상청 날씨 데이터 호출 기능
   function getWeatherData() {
     const weatherKey = localStorage.getItem('weather_api_key');
     const resultBox = document.getElementById('weather-result');
@@ -339,21 +369,18 @@
       return;
     }
 
-    // 위경도를 기상청 격자 x, y 좌표로 변환 (샘플용 서울 기본값 60, 127 지정 / 실제 계산식 연동 가능)
     const nx = 60;
     const ny = 127;
 
-    // 현재 날짜 기준 데이터 세팅 (2026-07-16 등 포맷에 맞춰 날짜와 직전 시간 조합 필수)
     const today = new Date();
     const baseDate = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-    const baseTime = "0500"; // 기본 기상청 단기예보 발표 타임 고정 샘플
+    const baseTime = "0500"; 
 
     resultBox.innerText = "날씨 데이터를 가져오는 중...";
 
-    // 디코딩 처리된 키를 매개변수 구조로 전달하여 이중 인코딩 오류 방지
     const baseUrl = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst";
     const params = new URLSearchParams({
-      serviceKey: weatherKey, // 발급받은 일반 인증키 입력
+      serviceKey: weatherKey,
       pageNo: '1',
       numOfRows: '10',
       dataType: 'JSON',
@@ -383,7 +410,6 @@
           });
           resultBox.innerText = outputText;
         } else {
-          // 기상청 에러 메시지 상세 노출
           const errMsg = data.response ? data.response.header.resultMsg : "API 설정 미승인 또는 대기 상태";
           resultBox.innerText = `❌ 오류 발생: ${errMsg}\n(승인 대기 중이거나 키 문제일 수 있습니다.)`;
         }

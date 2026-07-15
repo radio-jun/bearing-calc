@@ -405,6 +405,7 @@
       <div class="mini-map-container">
         <div id="miniMap" class="mini-map"></div>
       </div>
+      <div class="preset-note" id="miniMapNote" style="display:none; margin-top:-6px; color:#e0a951;"></div>
 
       <div class="map-link-row">
         <a id="naverMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">네이버지도 앱 연동</a>
@@ -450,8 +451,15 @@
         한국 실정에 맞는 국산 지도 서비스 및 실시간 기상청 정보를 연동하기 위해 발급받은 API 키를 입력하세요. 입력하지 않으면 대체 글로벌 무료 서비스가 가동됩니다.
       </div>
       <div class="field" style="margin-bottom: 10px;">
-        <label>카카오 REST API 키</label>
+        <label>카카오 REST API 키 (주소 변환용)</label>
         <input id="kakaoApiKey" type="password" placeholder="카카오에서 발급받은 REST API 키 입력" onchange="saveApiKeys()">
+      </div>
+      <div class="field" style="margin-bottom: 10px;">
+        <label>카카오 JavaScript 키 (지도 표시용)</label>
+        <input id="kakaoJsKey" type="password" placeholder="카카오에서 발급받은 JavaScript 키 입력" onchange="saveApiKeys()">
+      </div>
+      <div class="preset-note" style="font-size: 10.5px; color:#b08a3a; margin-bottom:10px;">
+        ⚠ REST API 키와 JavaScript 키는 서로 다른 키입니다. 지도가 안 뜨면 (1) JavaScript 키를 정확히 넣었는지, (2) 카카오 개발자 콘솔 &gt; 내 애플리케이션 &gt; 플랫폼 &gt; Web에 이 사이트 주소(예: https://내계정.github.io)가 등록돼 있는지 확인해 주세요.
       </div>
       <div class="field" style="margin-bottom: 10px;">
         <label>기상청 공공데이터 일반 인증키 (Encoding)</label>
@@ -617,10 +625,12 @@ function saveLogs(list){
 // API 키 로컬 세팅 관리
 function saveApiKeys(){
   localStorage.setItem('kakao_api_key', document.getElementById('kakaoApiKey').value.trim());
+  localStorage.setItem('kakao_js_key', document.getElementById('kakaoJsKey').value.trim());
   localStorage.setItem('kma_api_key', document.getElementById('kmaApiKey').value.trim());
 }
 function loadApiKeys(){
   document.getElementById('kakaoApiKey').value = localStorage.getItem('kakao_api_key') || '';
+  document.getElementById('kakaoJsKey').value = localStorage.getItem('kakao_js_key') || '';
   document.getElementById('kmaApiKey').value = localStorage.getItem('kma_api_key') || '';
 }
 
@@ -1083,33 +1093,66 @@ function getGlobalWeatherDesc(code) {
 function renderMiniMap(lat, lon) {
   var container = document.getElementById('miniMap');
   container.innerHTML = ''; // 이전 맵 컨텐츠 초기화
-  
+
+  var noteEl = document.getElementById('miniMapNote');
+  if (noteEl) { noteEl.textContent = ''; noteEl.style.display = 'none'; }
+
   if (activeMap) {
     activeMap.remove();
     activeMap = null;
   }
 
-  var kakaoKey = localStorage.getItem('kakao_api_key') || '';
+  // 지도 SDK는 "JavaScript 키"가 필요합니다 (REST API 키와는 다른 키입니다)
+  var kakaoJsKey = localStorage.getItem('kakao_js_key') || '';
 
-  if (kakaoKey) {
-    // 1. 카카오맵 API 로드 및 객체 렌더링
+  if (kakaoJsKey) {
     if (typeof kakao !== 'undefined' && kakao.maps) {
-      initKakaoMap(lat, lon);
+      try {
+        initKakaoMap(lat, lon);
+      } catch (e) {
+        console.warn('카카오맵 초기화 실패, OSM으로 대체:', e);
+        showMiniMapNote('카카오맵 로드 실패 (키/도메인 등록을 확인해 주세요) — 무료 지도로 대체합니다.');
+        initLeafletMap(lat, lon);
+      }
     } else {
-      // 카카오 맵 스크립트가 아직 없는 경우 동적으로 주입하여 연동 실행
       var script = document.createElement('script');
       script.type = 'text/javascript';
-      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false`;
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoJsKey}&autoload=false`;
       script.onload = function() {
-        kakao.maps.load(function() {
-          initKakaoMap(lat, lon);
-        });
+        try {
+          kakao.maps.load(function() {
+            try {
+              initKakaoMap(lat, lon);
+            } catch (e) {
+              console.warn('카카오맵 초기화 실패, OSM으로 대체:', e);
+              showMiniMapNote('카카오맵 로드 실패 (키/도메인 등록을 확인해 주세요) — 무료 지도로 대체합니다.');
+              initLeafletMap(lat, lon);
+            }
+          });
+        } catch (e) {
+          console.warn('카카오맵 SDK 오류, OSM으로 대체:', e);
+          showMiniMapNote('카카오맵 SDK 오류 — 무료 지도로 대체합니다.');
+          initLeafletMap(lat, lon);
+        }
+      };
+      script.onerror = function() {
+        console.warn('카카오맵 스크립트 로드 실패, OSM으로 대체');
+        showMiniMapNote('카카오맵 스크립트를 불러오지 못했습니다 — 무료 지도로 대체합니다.');
+        initLeafletMap(lat, lon);
       };
       document.head.appendChild(script);
     }
   } else {
-    // 2. 카카오 키가 없을 시 글로벌 Leaflet OSM 연동 구동
+    // 카카오 JavaScript 키가 없을 시 글로벌 Leaflet OSM 연동 구동
     initLeafletMap(lat, lon);
+  }
+}
+
+function showMiniMapNote(msg){
+  var noteEl = document.getElementById('miniMapNote');
+  if (noteEl) {
+    noteEl.textContent = msg;
+    noteEl.style.display = 'block';
   }
 }
 

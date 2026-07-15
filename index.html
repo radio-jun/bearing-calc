@@ -1,424 +1,1767 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>방위각 계산기 & 날씨 정보</title>
-  <style>
-    /* 모바일 가독성을 높인 직관적인 UI 스타일링 */
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0;
-      padding: 15px;
-      background-color: #f5f6fa;
-      color: #2c3e50;
-    }
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
-      background: #ffffff;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    h2 {
-      margin-top: 0;
-      border-bottom: 2px solid #3498db;
-      padding-bottom: 8px;
-      color: #2c3e50;
-      font-size: 18px;
-    }
-    .section {
-      margin-bottom: 25px;
-    }
-    .input-group {
-      margin-bottom: 15px;
-    }
-    label {
-      display: block;
-      font-weight: bold;
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
-    input[type="text"] {
-      width: 100%;
-      padding: 12px;
-      box-sizing: border-box;
-      border: 1px solid #ccd1d9;
-      border-radius: 6px;
-      font-size: 14px;
-      background-color: #f8f9fa;
-    }
-    input[type="text"]:focus {
-      outline: none;
-      border-color: #3498db;
-      background-color: #fff;
-    }
-    
-    /* 버튼 스타일 조정 (모바일 터치 영역 확보) */
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
-    }
-    button {
-      flex: 1;
-      padding: 12px;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-primary {
-      background-color: #3498db;
-      color: white;
-    }
-    .btn-primary:hover { background-color: #2980b9; }
-    
-    .btn-save {
-      background-color: #2ecc71;
-      color: white;
-    }
-    .btn-save:hover { background-color: #27ae60; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>방위각·거리 계산</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg: #0c1117;
+    --panel: #141b24;
+    --line: #223040;
+    --accent: #3ad6c2;
+    --accent-dim: #1f8f80;
+    --text: #e8edf2;
+    --text-dim: #7c8a99;
+    --warn: #ff8a5b;
+    --mono: 'SF Mono', ui-monospace, 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    min-height:100vh;
+  }
+  .wrap{max-width:480px; margin:0 auto; padding:28px 18px 60px;}
 
-    .btn-clear {
-      background-color: #e74c3c;
-      color: white;
-    }
-    .btn-clear:hover { background-color: #c0392b; }
+  header{margin-bottom:22px;}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+    color:var(--accent-dim); text-transform:uppercase;
+  }
+  h1{font-size:22px; font-weight:700; margin:4px 0 0; letter-spacing:-0.01em;}
+  .sub{color:var(--text-dim); font-size:13px; margin-top:4px;}
 
-    /* 지도 영역 */
-    #map {
-      width: 100%;
-      height: 300px;
-      background-color: #e9ecef;
-      border-radius: 8px;
-      margin-top: 15px;
-      display: none; /* 지도가 생성되면 표시됨 */
-      border: 1px solid #ccd1d9;
-    }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:18px;
+    margin-bottom:14px;
+  }
+  .card-title{
+    font-family:var(--mono); font-size:11px; letter-spacing:.1em;
+    color:var(--text-dim); text-transform:uppercase; margin-bottom:14px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .dot{width:6px;height:6px;border-radius:50%; background:var(--accent); display:inline-block; margin-right:8px;}
 
-    /* 설정 영역 */
-    .setting-group {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #e6e9ed;
-      margin-top: 15px;
-    }
-    
-    /* 피드백 메시지 */
-    .alert-msg {
-      display: block;
-      font-size: 13px;
-      margin-top: 8px;
-      height: 18px;
-      transition: opacity 0.3s ease;
-      opacity: 0;
-      font-weight: bold;
-    }
-    .alert-msg.show {
-      opacity: 1;
-    }
-    
-    .result-box {
-      background: #edf2f7;
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 15px;
-      font-family: monospace;
-      white-space: pre-line;
-      font-size: 13px;
-    }
-    hr {
-      border: 0;
-      height: 1px;
-      background: #e6e9ed;
-      margin: 20px 0;
-    }
-  </style>
-  
-  <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+  .dms-group{margin-bottom:10px;}
+  .dms-row{display:flex; gap:8px; align-items:center;}
+  .dms-row input{text-align:center;}
+  .dms-unit-wrap{position:relative; flex:1.1;}
+  .dms-unit-wrap.m{flex:1;}
+  .dms-unit-wrap.s{flex:1.3;}
+  .dms-unit-wrap input{width:100%;}
+  .dms-unit-wrap span{
+    position:absolute; right:9px; top:50%; transform:translateY(-50%);
+    font-size:12px; color:var(--text-dim); pointer-events:none;
+  }
+
+  .map-link-row{
+    display:flex; gap:8px; margin-top:14px;
+  }
+  .map-link-btn{
+    flex:1; text-align:center; padding:11px 0;
+    border-radius:9px; border:1px solid var(--line);
+    background:transparent; color:var(--accent);
+    font-size:13px; font-weight:600; text-decoration:none;
+    font-family:var(--sans);
+  }
+  .map-link-btn:active{background:#1a232e;}
+
+  .row{display:flex; gap:10px; margin-bottom:10px;}
+  .field{flex:1;}
+  label{
+    display:block; font-size:11px; color:var(--text-dim);
+    margin-bottom:6px; font-family:var(--mono);
+  }
+  input{
+    width:100%;
+    background:#0a0f15;
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:9px;
+    padding:11px 12px;
+    font-size:16px;
+    font-family:var(--mono);
+    outline:none;
+  }
+  input:focus{border-color:var(--accent-dim);}
+  input::placeholder{color:#3a4654;}
+
+  select{
+    width:100%;
+    background:#0a0f15;
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:9px;
+    padding:11px 12px;
+    font-size:15px;
+    font-family:var(--sans);
+    outline:none;
+  }
+  select:focus{border-color:var(--accent-dim);}
+
+  #scrollTopBtn{
+    display:none;
+    position:fixed;
+    bottom:22px;
+    right:18px;
+    z-index:999;
+    background:var(--accent, #2dd4bf);
+    color:#04120f;
+    border:none;
+    border-radius:999px;
+    padding:11px 16px;
+    font-size:13px;
+    font-weight:600;
+    font-family:var(--sans);
+    box-shadow:0 4px 14px rgba(0,0,0,0.4);
+  }
+  #scrollTopBtn.show{ display:block; }
+
+  .site-type-btn{
+    flex:1;
+    background:#0a0f15;
+    border:1px solid var(--line);
+    color:var(--text-dim, #9aa5b1);
+    border-radius:9px;
+    padding:11px 0;
+    font-size:14px;
+    font-weight:600;
+    font-family:var(--sans);
+  }
+  .site-type-btn.active{
+    background:var(--accent, #2dd4bf);
+    color:#04120f;
+    border-color:var(--accent, #2dd4bf);
+  }
+
+  .gps-btn{
+    width:100%;
+    margin-top:2px;
+    padding:11px;
+    border-radius:9px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--text-dim);
+    font-size:13px;
+    font-family:var(--sans);
+  }
+  .gps-btn:active{background:#1a232e;}
+
+  .calc-btn{
+    width:100%;
+    padding:15px;
+    border-radius:11px;
+    border:none;
+    background:var(--accent);
+    color:#062019;
+    font-size:16px;
+    font-weight:700;
+    margin-top:6px;
+    letter-spacing:.01em;
+  }
+  .calc-btn:active{background:var(--accent-dim);}
+
+  .result{
+    display:none;
+  }
+  .result.show{display:block;}
+
+  .big-readout{
+    display:flex;
+    gap:10px;
+    margin-bottom:14px;
+  }
+  .readout{
+    flex:1;
+    background:#0a0f15;
+    border:1px solid var(--accent-dim);
+    border-radius:12px;
+    padding:16px 14px;
+    text-align:center;
+  }
+  .readout .val{
+    font-family:var(--mono);
+    font-size:28px;
+    font-weight:700;
+    color:var(--accent);
+    line-height:1.1;
+  }
+  .readout .unit{font-size:13px; color:var(--accent); opacity:.7;}
+  .readout .lbl{
+    font-size:10px; color:var(--text-dim); letter-spacing:.1em;
+    margin-top:6px; font-family:var(--mono); text-transform:uppercase;
+  }
+
+  .detail-list{font-family:var(--mono); font-size:13px;}
+  .detail-row{
+    display:flex; justify-content:space-between;
+    padding:8px 0; border-bottom:1px solid var(--line);
+    color:var(--text-dim);
+    align-items: center;
+  }
+  .detail-row:last-child{border-bottom:none;}
+  .detail-row span:last-child{color:var(--text);}
+
+  /* 미니 지도 컨테이너 스타일 */
+  .mini-map-container {
+    margin-top: 10px;
+    margin-bottom: 12px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    overflow: hidden;
+    position: relative;
+  }
+  .mini-map {
+    width: 100%;
+    height: 180px;
+    background: #0a0f15;
+  }
+
+  .compass-wrap{
+    display:flex; justify-content:center; margin:6px 0 16px;
+  }
+  svg{display:block;}
+
+  .preset-note{
+    font-size:11px; color:var(--text-dim); margin-top:10px; line-height:1.5;
+  }
+  .err{
+    color:var(--warn); font-size:12px; margin-top:8px; display:none;
+  }
+  .err.show{display:block;}
+
+  .tabs{
+    display:flex; gap:6px; margin-bottom:18px;
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:11px; padding:4px;
+  }
+  .tab{
+    flex:1; text-align:center; padding:9px 0;
+    font-size:13px; font-weight:600; color:var(--text-dim);
+    border-radius:8px;
+  }
+  .tab.active{background:var(--accent); color:#062019;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .icon-btn{
+    width:30px; height:30px; border-radius:7px; border:1px solid var(--line);
+    background:transparent; color:var(--text-dim); font-size:14px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .icon-btn:active{background:#1a232e;}
+  .icon-btn.danger{color:var(--warn); border-color:#4a2e22;}
+  .empty-note{
+    color:var(--text-dim); font-size:13px; text-align:center; padding:24px 10px;
+  }
+
+  .add-sys-row{display:flex; gap:8px; margin-top:14px;}
+  .add-sys-row input{flex:1;}
+
+  .log-item{
+    background:#0a0f15; border:1px solid var(--line); border-radius:9px;
+    padding:12px 13px; margin-bottom:8px;
+  }
+  .log-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+  .log-sysname{font-size:13px; font-weight:700; color:var(--accent);}
+  .log-time{font-family:var(--mono); font-size:10px; color:var(--text-dim);}
+  .log-metrics{display:flex; gap:14px; font-family:var(--mono); font-size:13px; margin-bottom:4px;}
+  .log-metrics b{color:var(--text);}
+  .log-coords{font-family:var(--mono); font-size:11px; color:var(--text-dim);}
+  .log-del{
+    margin-top:8px; width:100%; padding:7px; border-radius:7px;
+    border:1px solid #4a2e22; background:transparent; color:var(--warn); font-size:12px;
+  }
+  .clear-all-btn{
+    width:100%; padding:11px; border-radius:9px; border:1px solid #4a2e22;
+    background:transparent; color:var(--warn); font-size:13px; margin-top:10px;
+  }
+
+  footer{
+    text-align:center; color:var(--text-dim); font-size:11px;
+    margin-top:30px; font-family:var(--mono); letter-spacing:.05em;
+  }
+</style>
 </head>
 <body>
+<div class="wrap">
 
-<div class="container">
-  
-  <div class="section">
-    <h2>방위각 계산 및 지도 확인</h2>
-    <div class="input-group">
-      <label for="search-address">주소 입력</label>
-      <input type="text" id="search-address" placeholder="아래 주소 검색 버튼을 눌러주세요" readonly />
-      <div class="btn-row">
-        <button class="btn-primary" onclick="openPostcode()">주소 검색</button>
-      </div>
-    </div>
-    
-    <div class="input-group">
-      <label for="detail-address">상세 주소 (자동 연동 좌표)</label>
-      <input type="text" id="detail-address" placeholder="주소를 선택하면 위도/경도가 여기에 표시됩니다" readonly />
-    </div>
+  <header>
+    <div class="eyebrow">AOA / DF SITE TOOL</div>
+    <h1>방위각·거리 계산기</h1>
+    <div class="sub">기준점(시스템)과 발사장소 GPS 좌표 입력</div>
+  </header>
 
-    <div id="map"></div>
+  <div class="tabs">
+    <div class="tab active" id="tabCalc" onclick="switchTab('calc')">계산</div>
+    <div class="tab" id="tabLog" onclick="switchTab('log')">기록</div>
+    <div class="tab" id="tabSys" onclick="switchTab('sys')">설정</div>
   </div>
 
-  <hr>
+  <div class="view active" id="viewCalc">
 
-  <div class="section">
-    <h2>기상 정보 조회</h2>
-    <button class="btn-primary" onclick="getWeatherData()">날씨 정보 가져오기</button>
-    <div id="weather-result" class="result-box">날씨 정보가 여기에 표시됩니다.</div>
-  </div>
-
-  <hr>
-
-  <div class="section">
-    <h2>API 설정</h2>
-    
-    <div class="setting-group">
-      <label for="kakao-key">카카오 JavaScript API 키</label>
-      <input type="text" id="kakao-key" placeholder="JavaScript 키를 입력하세요" />
-      <div class="btn-row">
-        <button class="btn-save" onclick="saveApiKey('kakao')">저장</button>
-        <button class="btn-clear" onclick="clearApiKey('kakao')">초기화</button>
+  <div class="card">
+    <div class="card-title"><span><span class="dot" style="background:var(--warn)"></span>발사 장소</span></div>
+    <div class="dms-group">
+      <label>위도 (Lat) — 도 분 초 / N</label>
+      <div class="dms-row">
+        <div class="dms-unit-wrap"><input id="lat2d" type="text" inputmode="numeric" placeholder="37"><span>°</span></div>
+        <div class="dms-unit-wrap m"><input id="lat2m" type="text" inputmode="numeric" placeholder="37"><span>'</span></div>
+        <div class="dms-unit-wrap s"><input id="lat2s" type="text" inputmode="decimal" placeholder="12.0"><span>"</span></div>
       </div>
-      <span id="kakao-alert" class="alert-msg"></span>
     </div>
-
-    <div class="setting-group">
-      <label for="weather-key">기상청 단기예보 일반인증키</label>
-      <input type="text" id="weather-key" placeholder="일반인증키를 입력하세요" />
-      <div class="btn-row">
-        <button class="btn-save" onclick="saveApiKey('weather')">저장</button>
-        <button class="btn-clear" onclick="clearApiKey('weather')">초기화</button>
+    <div class="dms-group">
+      <label>경도 (Lon) — 도 분 초 / E</label>
+      <div class="dms-row">
+        <div class="dms-unit-wrap"><input id="lon2d" type="text" inputmode="numeric" placeholder="127"><span>°</span></div>
+        <div class="dms-unit-wrap m"><input id="lon2m" type="text" inputmode="numeric" placeholder="3"><span>'</span></div>
+        <div class="dms-unit-wrap s"><input id="lon2s" type="text" inputmode="decimal" placeholder="00.0"><span>"</span></div>
       </div>
-      <span id="weather-alert" class="alert-msg"></span>
+    </div>
+    <button class="gps-btn" onclick="useGPS(2)">현재 위치 사용</button>
+
+    <div class="dms-group" style="margin-top:12px;">
+      <label>해발고도 (GPS 측정값, m)</label>
+      <div class="row" style="margin-bottom:0;">
+        <div class="field">
+          <input id="elevInput" type="text" inputmode="decimal" placeholder="GPS 또는 서버에서 자동 조회">
+        </div>
+      </div>
+      <div class="preset-note" id="elevGpsNote">"현재 위치 사용" 시 기기 고도 값을 분석하며, 고도 신호 부재 시 표고 지도 데이터를 통해 자동 연계 조회합니다.</div>
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-title"><span><span class="dot"></span>기준점 (시스템)</span></div>
+    <div class="field" style="margin-bottom:12px;">
+      <select id="refSysSelect" onchange="onRefSysSelectChange()">
+        <option value="">직접입력</option>
+      </select>
+    </div>
+    <div class="empty-note" id="quickSysEmpty" style="display:none; padding:10px;">저장된 시스템이 없습니다. "설정" 탭에서 추가하세요.</div>
+    <div class="dms-group">
+      <label>위도 (Lat) — 도 분 초 / N</label>
+      <div class="dms-row">
+        <div class="dms-unit-wrap"><input id="lat1d" type="text" inputmode="numeric" placeholder="37"><span>°</span></div>
+        <div class="dms-unit-wrap m"><input id="lat1m" type="text" inputmode="numeric" placeholder="33"><span>'</span></div>
+        <div class="dms-unit-wrap s"><input id="lat1s" type="text" inputmode="decimal" placeholder="00.0"><span>"</span></div>
+      </div>
+    </div>
+    <div class="dms-group">
+      <label>경도 (Lon) — 도 분 초 / E</label>
+      <div class="dms-row">
+        <div class="dms-unit-wrap"><input id="lon1d" type="text" inputmode="numeric" placeholder="126"><span>°</span></div>
+        <div class="dms-unit-wrap m"><input id="lon1m" type="text" inputmode="numeric" placeholder="58"><span>'</span></div>
+        <div class="dms-unit-wrap s"><input id="lon1s" type="text" inputmode="decimal" placeholder="48.0"><span>"</span></div>
+      </div>
+    </div>
+    <button class="gps-btn" onclick="useGPS(1)">현재 위치 사용</button>
+  </div>
+
+  <button class="calc-btn" onclick="calc()">거리 · 방위각 계산</button>
+  <div class="err" id="errMsg">좌표를 모두 입력해 주세요.</div>
+
+  <div class="result" id="result">
+    <div class="compass-wrap">
+      <svg id="compass" width="180" height="180" viewBox="0 0 180 180"></svg>
+    </div>
+
+    <div class="big-readout">
+      <div class="readout">
+        <div class="val" id="distVal">-</div>
+        <div class="unit">km</div>
+        <div class="lbl">거리</div>
+      </div>
+      <div class="readout">
+        <div class="val" id="brgVal">-</div>
+        <div class="unit">°</div>
+        <div class="lbl">방위각 (TRUE)</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">상세 정보</div>
+      <div class="detail-list">
+        <div class="detail-row"><span>측정 일시</span><span id="measTimeVal" style="font-weight:600; color:var(--accent);">-</span></div>
+        <div class="detail-row"><span>발사장소 해발고도</span><span id="elevVal">-</span></div>
+        <div class="detail-row" style="display:block; border-bottom: none; padding-bottom: 0;">
+          <span style="display:block; margin-bottom:4px;">발사장소 주소 (자동/수정 가능)</span>
+          <input id="addrVal" type="text" placeholder="네트워크 연결 시 주소가 자동으로 채워집니다." autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--bg2, #1a1a1a); border:1px solid var(--border, #333); color:var(--text); font-family:var(--sans); font-size:12.5px; padding:8px; border-radius:6px;">
+        </div>
+      </div>
+
+      <div class="mini-map-container">
+        <div id="miniMap" class="mini-map"></div>
+      </div>
+
+      <div class="map-link-row">
+        <a id="naverMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">네이버지도 앱 연동</a>
+        <a id="kakaoMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">카카오맵 앱 연동</a>
+      </div>
+
+      <div class="row" style="margin-top:14px; margin-bottom:0;">
+        <div class="field">
+          <label>기온 (°C)</label>
+          <input id="tempInput" type="text" inputmode="decimal" placeholder="자동 조회됨" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>습도 (%)</label>
+          <input id="humidInput" type="text" inputmode="decimal" placeholder="자동 조회됨" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>날씨</label>
+          <input id="weatherInput" type="text" placeholder="자동 조회됨" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-top:16px;">발사장소 구분</div>
+      <div class="row" style="margin-bottom:6px;">
+        <button type="button" class="site-type-btn" id="siteTypeFixedBtn" onclick="setSiteType('고정')">고정</button>
+        <button type="button" class="site-type-btn" id="siteTypeZoneBtn" onclick="setSiteType('권역')">권역</button>
+      </div>
+
+      <div class="card-title" style="margin-top:16px;">주파수별 신호세기 / 방향탐지 측정값</div>
+      <div id="freqMeasList"></div>
+      <button class="gps-btn" onclick="addFreqRow()">측정값 행 추가</button>
+    </div>
+
+    <button class="gps-btn" style="border-color:var(--accent-dim); color:var(--accent);" onclick="saveLog()">이 결과 기록에 저장</button>
+    <div id="saveLogMsg" style="display:none; color:#22c55e; text-align:center; font-size:13px; font-weight:600; margin-top:8px;">저장되었습니다</div>
+  </div>
+
+  </div>
+
+  <div class="view" id="viewSys">
+    <div class="card">
+      <div class="card-title"><span><span class="dot" style="background:#ffcc00"></span>국내 고정밀 API 연동 설정</span></div>
+      <div class="preset-note" style="margin-bottom: 12px; font-size:11.5px; color: var(--text-dim);">
+        한국 실정에 맞는 국산 지도 서비스 및 실시간 기상청 정보를 연동하기 위해 발급받은 API 키를 입력하세요. 입력하지 않으면 대체 글로벌 무료 서비스가 가동됩니다.
+      </div>
+      <div class="field" style="margin-bottom: 10px;">
+        <label>카카오 REST API 키</label>
+        <input id="kakaoApiKey" type="password" placeholder="카카오에서 발급받은 REST API 키 입력" onchange="saveApiKeys()">
+      </div>
+      <div class="field" style="margin-bottom: 10px;">
+        <label>기상청 공공데이터 일반 인증키 (Encoding)</label>
+        <input id="kmaApiKey" type="password" placeholder="공공데이터포털 기상청 단기예보 서비스 인증키 입력" onchange="saveApiKeys()">
+      </div>
+      <div class="preset-note" style="font-size: 10px; color:#5c6f84;">* 입력하신 API 키는 브라우저 내부 로컬스토리지에만 안전하게 저장되며 절대 외부로 전송되지 않습니다.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><span class="dot"></span>시스템 저장</span></div>
+      <div class="field" style="margin-bottom:12px;">
+        <label>저장된 시스템 좌표 목록</label>
+        <select id="sysListSelect" onchange="onSysListSelectChange()">
+          <option value="">저장 목록 없음</option>
+        </select>
+      </div>
+      <div class="sys-coord" id="sysListCoordPreview" style="display:none; margin-bottom:12px;"></div>
+      <div class="row" style="margin-bottom:16px;">
+        <button class="icon-btn" style="flex:1; height:auto; padding:11px 0;" onclick="useSelectedSys()">계산에 사용</button>
+        <button class="icon-btn danger" id="sysDeleteBtn" style="flex:1; height:auto; padding:11px 0;" onclick="deleteSelectedSys()">삭제</button>
+      </div>
+
+      <div class="add-sys-row">
+        <input id="newSysName" type="text" placeholder="이름 (예: 계양산)">
+      </div>
+      <div class="dms-group">
+        <label>위도 (Lat) — 도 분 초 / N</label>
+        <div class="dms-row">
+          <div class="dms-unit-wrap"><input id="newSysLatD" type="text" inputmode="numeric" placeholder="37"><span>°</span></div>
+          <div class="dms-unit-wrap m"><input id="newSysLatM" type="text" inputmode="numeric" placeholder="33"><span>'</span></div>
+          <div class="dms-unit-wrap s"><input id="newSysLatS" type="text" inputmode="decimal" placeholder="00.0"><span>"</span></div>
+        </div>
+      </div>
+      <div class="dms-group">
+        <label>경도 (Lon) — 도 분 초 / E</label>
+        <div class="dms-row">
+          <div class="dms-unit-wrap"><input id="newSysLonD" type="text" inputmode="numeric" placeholder="126"><span>°</span></div>
+          <div class="dms-unit-wrap m"><input id="newSysLonM" type="text" inputmode="numeric" placeholder="58"><span>'</span></div>
+          <div class="dms-unit-wrap s"><input id="newSysLonS" type="text" inputmode="decimal" placeholder="48.0"><span>"</span></div>
+        </div>
+      </div>
+      <button class="gps-btn" onclick="fillNewSysGPS()">현재 위치로 채우기</button>
+      <button class="calc-btn" style="margin-top:10px;" onclick="addSystem()">시스템 좌표 저장</button>
+      <div id="saveSysMsg" style="display:none; color:#22c55e; text-align:center; font-size:13px; font-weight:600; margin-top:8px;">저장되었습니다</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><span class="dot"></span>발사 주파수</span></div>
+      <div class="field" style="margin-bottom:12px;">
+        <label>저장된 발사 주파수 목록</label>
+        <select id="freqListSelect" onchange="onFreqListSelectChange()">
+          <option value="">저장 목록 없음</option>
+        </select>
+      </div>
+      <div class="row" style="margin-bottom:16px;">
+        <button class="icon-btn danger" id="freqDeleteBtn" style="flex:1; height:auto; padding:11px 0;" onclick="deleteSelectedFreq()">삭제</button>
+      </div>
+
+      <div class="add-sys-row">
+        <input id="newFreqInput" type="text" inputmode="decimal" placeholder="주파수 (MHz) 예: 1575.42">
+      </div>
+      <button class="calc-btn" style="margin-top:10px;" onclick="addFreq()">주파수 저장</button>
+      <div id="saveFreqMsg" style="display:none; color:#22c55e; text-align:center; font-size:13px; font-weight:600; margin-top:8px;">저장되었습니다</div>
+    </div>
+  </div>
+
+  <div class="view" id="viewLog">
+    <div class="card">
+      <div class="card-title"><span><span class="dot"></span>계산 기록</span></div>
+
+      <button class="gps-btn" id="exportCsvBtn" onclick="exportFilteredLogs()" style="display:none; border-color:var(--accent-dim); color:var(--accent); margin-bottom:14px;">CSV로 내보내기</button>
+
+      <div class="row" style="margin-bottom:8px;">
+        <div class="field">
+          <label>시작일</label>
+          <input id="logFilterDateFrom" type="date" onchange="renderLogList()">
+        </div>
+        <div class="field">
+          <label>종료일</label>
+          <input id="logFilterDateTo" type="date" onchange="renderLogList()">
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <div class="field">
+          <label>시스템 필터</label>
+          <select id="logFilterSys" onchange="renderLogList()">
+            <option value="">전체 시스템</option>
+          </select>
+        </div>
+      </div>
+      <button class="icon-btn" style="width:100%; height:auto; padding:9px 0; margin-bottom:14px;" onclick="clearLogFilters()">필터 초기화</button>
+
+      <div id="logList"></div>
+      <div class="empty-note" id="logEmpty" style="display:none;">저장된 기록이 없습니다.</div>
+      <button class="clear-all-btn" id="clearAllBtn" onclick="clearAllLogs()" style="display:none;">전체 기록 삭제</button>
+    </div>
+  </div>
+
+  <button id="scrollTopBtn" onclick="scrollToTop()">▲ 맨 위로</button>
+
+  <footer>GPS L1/L2 · WGS84 · GREAT-CIRCLE</footer>
 </div>
 
 <script>
-  let currentLat = null;
-  let currentLng = null;
+function toRad(d){return d*Math.PI/180;}
+function toDeg(r){return r*180/Math.PI;}
 
-  // 페이지 실행 시 로컬 스토리지 데이터 동기화
-  window.onload = function() {
-    const savedKakao = localStorage.getItem('kakao_api_key');
-    const savedWeather = localStorage.getItem('weather_api_key');
+var STORE_SYS = 'df_systems_v1';
+var STORE_LOG = 'df_logs_v1';
+var STORE_FREQ = 'df_freqs_v1';
+var lastResult = null;
+var activeMap = null; // 리플렛 지도가 로드되었을 때 객체 보관용
 
-    if (savedKakao) {
-      document.getElementById('kakao-key').value = savedKakao;
-      loadKakaoMapSDK(savedKakao); // 지도 엔진 로드
-    }
-    if (savedWeather) {
-      document.getElementById('weather-key').value = savedWeather;
-    }
+// DMS <-> DD 변환 도구
+function dmsToDD(d, m, s){
+  d = parseFloat(d)||0; m = parseFloat(m)||0; s = parseFloat(s)||0;
+  var sign = d < 0 ? -1 : 1;
+  return sign * (Math.abs(d) + m/60 + s/3600);
+}
+function ddToDMS(dd){
+  var sign = dd < 0 ? -1 : 1;
+  dd = Math.abs(dd);
+  var d = Math.floor(dd);
+  var mFull = (dd - d) * 60;
+  var m = Math.floor(mFull);
+  var s = (mFull - m) * 60;
+  return {d: sign*d, m: m, s: s};
+}
+function getDD(prefix){
+  var d = document.getElementById(prefix+'d') || document.getElementById(prefix+'D');
+  var m = document.getElementById(prefix+'m') || document.getElementById(prefix+'M');
+  var s = document.getElementById(prefix+'s') || document.getElementById(prefix+'S');
+  if(!d || !m || !s) return NaN;
+  if(d.value==='' && m.value==='' && s.value==='') return NaN;
+  return dmsToDD(d.value, m.value, s.value);
+}
+function setDMS(prefix, dd){
+  var dms = ddToDMS(dd);
+  var dEl = document.getElementById(prefix+'d') || document.getElementById(prefix+'D');
+  var mEl = document.getElementById(prefix+'m') || document.getElementById(prefix+'M');
+  var sEl = document.getElementById(prefix+'s') || document.getElementById(prefix+'S');
+  dEl.value = dms.d;
+  mEl.value = dms.m;
+  sEl.value = dms.s.toFixed(2);
+}
+
+// 로컬 스토리지 입출력
+function loadSystems(){
+  try{ return JSON.parse(localStorage.getItem(STORE_SYS)) || []; }
+  catch(e){ return []; }
+}
+function saveSystems(list){
+  localStorage.setItem(STORE_SYS, JSON.stringify(list));
+}
+function loadLogs(){
+  try{ return JSON.parse(localStorage.getItem(STORE_LOG)) || []; }
+  catch(e){ return []; }
+}
+function saveLogs(list){
+  localStorage.setItem(STORE_LOG, JSON.stringify(list));
+}
+
+// API 키 로컬 세팅 관리
+function saveApiKeys(){
+  localStorage.setItem('kakao_api_key', document.getElementById('kakaoApiKey').value.trim());
+  localStorage.setItem('kma_api_key', document.getElementById('kmaApiKey').value.trim());
+}
+function loadApiKeys(){
+  document.getElementById('kakaoApiKey').value = localStorage.getItem('kakao_api_key') || '';
+  document.getElementById('kmaApiKey').value = localStorage.getItem('kma_api_key') || '';
+}
+
+function switchTab(name){
+  ['calc','sys','log'].forEach(function(t){
+    document.getElementById('tab'+capitalize(t)).classList.toggle('active', t===name);
+    document.getElementById('view'+capitalize(t)).classList.toggle('active', t===name);
+  });
+  if(name==='sys'){ loadApiKeys(); renderSysListSelect(); renderFreqListSelect(); }
+  if(name==='log') renderLogList();
+  if(name==='calc') renderRefSysOptions();
+}
+function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+
+function geoErrorMessage(err){
+  if(err.code === 1) return '위치 권한이 거부되었습니다. 설정 > Safari(또는 이 앱) > 위치 접근에서 "허용"으로 변경해 주세요.';
+  if(err.code === 2) return '위치를 확인할 수 없습니다. GPS/Wi-Fi 신호를 확인해 주세요.';
+  if(err.code === 3) return '위치 확인이 시간 초과되었습니다. 다시 시도해 주세요.';
+  return '위치를 가져올 수 없습니다: ' + err.message;
+}
+
+var gpsAltitude = {1: null, 2: null};
+
+function useGPS(which){
+  if(!navigator.geolocation){
+    alert('이 브라우저에서 위치 정보를 사용할 수 없습니다. https:// 주소로 열려 있는지 확인해 주세요.');
+    return;
   }
-
-  // [설정] 개별 저장 기능
-  function saveApiKey(type) {
-    const inputElement = document.getElementById(`${type}-key`);
-    const alertElement = document.getElementById(`${type}-alert`);
-    const keyValue = inputElement.value.trim();
-
-    if (!keyValue) {
-      alertElement.style.color = '#e74c3c';
-      showAlert(alertElement, "키를 입력해 주세요.");
-      return;
-    }
-
-    localStorage.setItem(`${type}_api_key`, keyValue);
-    alertElement.style.color = '#2ecc71';
-    showAlert(alertElement, "적용되었습니다.");
-
-    if (type === 'kakao') {
-      loadKakaoMapSDK(keyValue);
-    }
+  if(which === 1){
+    document.getElementById('refSysSelect').value = '';
   }
-
-  // [설정] 개별 초기화 기능
-  function clearApiKey(type) {
-    const inputElement = document.getElementById(`${type}-key`);
-    const alertElement = document.getElementById(`${type}-alert`);
-
-    inputElement.value = '';
-    localStorage.removeItem(`${type}_api_key`);
-    alertElement.style.color = '#e74c3c';
-    showAlert(alertElement, "초기화되었습니다.");
-
-    // 카카오 키 초기화 시 기존 로드된 지도 스크립트도 제거
-    if (type === 'kakao') {
-      const existingScript = document.getElementById('kakao-map-script');
-      if (existingScript) existingScript.remove();
-      document.getElementById('map').style.display = 'none';
-    }
+  if(which === 2){
+    useGPSWithAltitude();
+    return;
   }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    setDMS('lat1', pos.coords.latitude);
+    setDMS('lon1', pos.coords.longitude);
+  }, function(err){
+    alert(geoErrorMessage(err));
+  }, {enableHighAccuracy:true, timeout:10000, maximumAge:0});
+}
 
-  function showAlert(element, message) {
-    element.innerText = message;
-    element.classList.add('show');
-    setTimeout(() => {
-      element.classList.remove('show');
-    }, 2500);
-  }
-
-  // 카카오 지도 엔진 로딩 함수
-  function loadKakaoMapSDK(apiKey) {
-    const existingScript = document.getElementById('kakao-map-script');
-    if (existingScript) {
-      existingScript.remove();
+// Open-Meteo 고도 자동 보정 조회 API (무상 글로벌 백그라운드)
+async function fetchElevationFromServer(lat, lon) {
+  try {
+    var response = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+    if (!response.ok) return null;
+    var data = await response.json();
+    if (data && data.elevation && data.elevation[0] !== undefined) {
+      return parseFloat(data.elevation[0]);
     }
+  } catch (e) {
+    console.error("고도 서버 자동 조회 실패:", e);
+  }
+  return null;
+}
 
-    const script = document.createElement('script');
-    script.id = 'kakao-map-script';
-    script.type = 'text/javascript';
-    // 라이브러리에 services(좌표변환기)를 반드시 명시합니다.
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services&autoload=false`;
+function useGPSWithAltitude(){
+  var note = document.getElementById('elevGpsNote');
+  var origNote = note ? note.textContent : '';
+  if(note) note.textContent = '위치 확인 및 해발고 고정 시도 중...';
+
+  var settled = false;
+  var watchId = null;
+
+  var giveUp = async function(gotFix){
+    if(settled) return;
+    settled = true;
+    if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+    if(note) note.textContent = origNote;
     
-    script.onload = () => {
-      kakao.maps.load(() => {
-        console.log("카카오 맵 SDK 로드 완료");
-      });
-    };
-    script.onerror = () => {
-      console.error("카카오 맵 SDK 로드 실패. API 키를 확인해 주세요.");
-    };
-    document.head.appendChild(script);
-  }
-
-  // 주소 검색 버튼 작동 함수 (카카오 키 등록 여부와 상관없이 무조건 주소창이 뜸)
-  function openPostcode() {
-    new daum.Postcode({
-      oncomplete: function(data) {
-        const roadAddr = data.roadAddress; // 선택한 도로명 주소
-        document.getElementById('search-address').value = roadAddr;
-
-        // 카카오 지도 키가 입력되어 있을 때만 위경도 좌표 변환을 시도합니다.
-        const savedKakao = localStorage.getItem('kakao_api_key');
-        if (savedKakao && typeof kakao !== 'undefined' && kakao.maps && kakao.maps.services) {
-          convertAddressToCoords(roadAddr);
-        } else {
-          document.getElementById('detail-address').value = "카카오 JavaScript 키가 없거나 저장되지 않아 좌표를 불러올 수 없습니다.";
-        }
+    var lat2 = getDD('lat2');
+    var lon2 = getDD('lon2');
+    if (!isNaN(lat2) && !isNaN(lon2)) {
+      if(note) note.textContent = 'GPS 고도 누락으로 서버에서 표고(DEM) 조회 중...';
+      var srvElev = await fetchElevationFromServer(lat2, lon2);
+      if (srvElev !== null) {
+        document.getElementById('elevInput').value = srvElev.toFixed(1);
+        if(note) note.textContent = origNote;
+        return;
       }
-    }).open();
-  }
+    }
+    
+    if(note) note.textContent = origNote;
+    if(gotFix){
+      alert('이 기기는 GPS 고도를 제공하지 않으며 기상 오프라인 상태입니다. 고도를 수동으로 입력해 주세요.');
+    }
+  };
 
-  // 주소를 위경도 좌표로 변환하고 지도 띄우기
-  function convertAddressToCoords(address) {
-    const geocoder = new kakao.maps.services.Geocoder();
+  var timeoutId = setTimeout(function(){ giveUp(true); }, 8000);
 
-    geocoder.addressSearch(address, function(result, status) {
-      if (status === kakao.maps.services.Status.OK) {
-        currentLat = result[0].y; // 위도
-        currentLng = result[0].x; // 경도
-
-        // 좌표 정보 표시
-        document.getElementById('detail-address').value = `위도: ${currentLat} / 경도: ${currentLng}`;
-
-        // 지도 띄우기
-        const mapContainer = document.getElementById('map');
-        mapContainer.style.display = 'block';
-
-        displayKakaoMap(currentLat, currentLng);
-      } else {
-        alert("좌표 변환 실패: 카카오 개발자 콘솔의 플랫폼 도메인 설정을 확인해 주세요.");
+  watchId = navigator.geolocation.watchPosition(async function(pos){
+    setDMS('lat2', pos.coords.latitude);
+    setDMS('lon2', pos.coords.longitude);
+    if(pos.coords.altitude !== null && pos.coords.altitude !== undefined){
+      gpsAltitude[2] = pos.coords.altitude;
+      if(!settled){
+        settled = true;
+        clearTimeout(timeoutId);
+        if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if(note) note.textContent = origNote;
+        document.getElementById('elevInput').value = pos.coords.altitude.toFixed(1);
       }
-    });
+    } else {
+      var srvElev = await fetchElevationFromServer(pos.coords.latitude, pos.coords.longitude);
+      if(srvElev !== null && !settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if(note) note.textContent = origNote;
+        document.getElementById('elevInput').value = srvElev.toFixed(1);
+      }
+    }
+  }, function(err){
+    clearTimeout(timeoutId);
+    giveUp(false);
+    alert(geoErrorMessage(err));
+  }, {enableHighAccuracy:true, maximumAge:0, timeout:10000});
+}
+
+function fillNewSysGPS(){
+  if(!navigator.geolocation){
+    alert('이 브라우저에서 위치 정보를 사용할 수 없습니다. https:// 주소로 열려 있는지 확인해 주세요.');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    setDMS('newSysLat', pos.coords.latitude);
+    setDMS('newSysLon', pos.coords.longitude);
+  }, function(err){
+    alert(geoErrorMessage(err));
+  }, {enableHighAccuracy:true, timeout:8000});
+}
+
+function addSystem(){
+  var name = document.getElementById('newSysName').value.trim();
+  var lat = getDD('newSysLat');
+  var lon = getDD('newSysLon');
+  if(!name || isNaN(lat) || isNaN(lon)){
+    alert('이름과 좌표를 모두 입력해 주세요.');
+    return;
+  }
+  var list = loadSystems();
+  list.push({id: Date.now().toString(), name: name, lat: lat, lon: lon});
+  saveSystems(list);
+  document.getElementById('newSysName').value = '';
+  ['newSysLatD','newSysLatM','newSysLatS','newSysLonD','newSysLonM','newSysLonS'].forEach(function(id){
+    document.getElementById(id).value = '';
+  });
+  renderSysListSelect();
+
+  var msg = document.getElementById('saveSysMsg');
+  if(msg){
+    msg.style.display = 'block';
+    clearTimeout(saveSysMsgTimeout);
+    saveSysMsgTimeout = setTimeout(function(){ msg.style.display = 'none'; }, 3000);
+  }
+}
+var saveSysMsgTimeout = null;
+
+function deleteSystem(id){
+  var list = loadSystems().filter(function(s){ return s.id !== id; });
+  saveSystems(list);
+  renderSysListSelect();
+}
+
+function selectSystem(id){
+  var sys = loadSystems().find(function(s){ return s.id === id; });
+  if(!sys) return;
+  setDMS('lat1', sys.lat);
+  setDMS('lon1', sys.lon);
+  var sel = document.getElementById('refSysSelect');
+  if(sel) sel.value = id;
+  switchTab('calc');
+}
+
+function renderSysListSelect(){
+  var list = loadSystems();
+  var sel = document.getElementById('sysListSelect');
+  if(!sel) return;
+  var prevValue = sel.value;
+  if(list.length === 0){
+    sel.innerHTML = '<option value="">저장 목록 없음</option>';
+    sel.value = '';
+  } else {
+    sel.innerHTML = list.map(function(s){
+      return '<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>';
+    }).join('');
+    var stillExists = list.some(function(s){ return s.id === prevValue; });
+    sel.value = stillExists ? prevValue : list[0].id;
+  }
+  updateSysListCoordPreview();
+}
+
+function updateSysListCoordPreview(){
+  var sel = document.getElementById('sysListSelect');
+  var preview = document.getElementById('sysListCoordPreview');
+  if(!sel || !preview) return;
+  var list = loadSystems();
+  var sys = list.find(function(s){ return s.id === sel.value; });
+  if(!sys){
+    preview.style.display = 'none';
+    preview.textContent = '';
+    return;
+  }
+  var dmsLat = ddToDMS(sys.lat), dmsLon = ddToDMS(sys.lon);
+  preview.textContent = dmsLat.d+'°'+dmsLat.m+"'"+dmsLat.s.toFixed(1)+'" , '+dmsLon.d+'°'+dmsLon.m+"'"+dmsLon.s.toFixed(1)+'"';
+  preview.style.display = 'block';
+}
+
+function onSysListSelectChange(){
+  pendingDeleteSysId = null;
+  clearTimeout(pendingDeleteSysTimeout);
+  var btn = document.getElementById('sysDeleteBtn');
+  if(btn) btn.textContent = '삭제';
+  updateSysListCoordPreview();
+}
+
+function useSelectedSys(){
+  var sel = document.getElementById('sysListSelect');
+  if(!sel || !sel.value){
+    alert('사용할 시스템을 먼저 선택해 주세요.');
+    return;
+  }
+  selectSystem(sel.value);
+}
+
+var pendingDeleteSysId = null;
+var pendingDeleteSysTimeout = null;
+
+function deleteSelectedSys(){
+  var sel = document.getElementById('sysListSelect');
+  var btn = document.getElementById('sysDeleteBtn');
+  if(!sel || !sel.value){
+    alert('삭제할 시스템을 먼저 선택해 주세요.');
+    return;
+  }
+  if(pendingDeleteSysId === sel.value){
+    clearTimeout(pendingDeleteSysTimeout);
+    pendingDeleteSysId = null;
+    if(btn) btn.textContent = '삭제';
+    deleteSystem(sel.value);
+    return;
+  }
+  pendingDeleteSysId = sel.value;
+  if(btn) btn.textContent = '한번 더 누르면 삭제';
+  pendingDeleteSysTimeout = setTimeout(function(){
+    pendingDeleteSysId = null;
+    if(btn) btn.textContent = '삭제';
+  }, 3000);
+}
+
+// ---- 발사 주파수 목록 ----
+function loadFreqs(){
+  try{ return JSON.parse(localStorage.getItem(STORE_FREQ)) || []; }
+  catch(e){ return []; }
+}
+function saveFreqs(list){
+  localStorage.setItem(STORE_FREQ, JSON.stringify(list));
+}
+
+function addFreq(){
+  var input = document.getElementById('newFreqInput');
+  var freq = input.value.trim();
+  if(!freq){
+    alert('주파수를 입력해 주세요.');
+    return;
+  }
+  var list = loadFreqs();
+  if(list.some(function(f){ return f.freq === freq; })){
+    alert('이미 저장된 주파수입니다.');
+    return;
+  }
+  list.push({id: Date.now().toString(), freq: freq});
+  saveFreqs(list);
+  input.value = '';
+  renderFreqListSelect();
+
+  var msg = document.getElementById('saveFreqMsg');
+  if(msg){
+    msg.style.display = 'block';
+    clearTimeout(saveFreqMsgTimeout);
+    saveFreqMsgTimeout = setTimeout(function(){ msg.style.display = 'none'; }, 3000);
+  }
+}
+var saveFreqMsgTimeout = null;
+
+function deleteFreqEntry(id){
+  var list = loadFreqs().filter(function(f){ return f.id !== id; });
+  saveFreqs(list);
+  renderFreqListSelect();
+}
+
+function renderFreqListSelect(){
+  var list = loadFreqs();
+  var sel = document.getElementById('freqListSelect');
+  if(!sel) return;
+  var prevValue = sel.value;
+  if(list.length === 0){
+    sel.innerHTML = '<option value="">저장 목록 없음</option>';
+    sel.value = '';
+  } else {
+    sel.innerHTML = list.map(function(f){
+      return '<option value="'+f.id+'">'+escapeHtml(f.freq)+' MHz</option>';
+    }).join('');
+    var stillExists = list.some(function(f){ return f.id === prevValue; });
+    sel.value = stillExists ? prevValue : list[0].id;
+  }
+}
+
+function onFreqListSelectChange(){
+  pendingDeleteFreqId = null;
+  clearTimeout(pendingDeleteFreqTimeout);
+  var btn = document.getElementById('freqDeleteBtn');
+  if(btn) btn.textContent = '삭제';
+}
+
+var pendingDeleteFreqId = null;
+var pendingDeleteFreqTimeout = null;
+
+function deleteSelectedFreq(){
+  var sel = document.getElementById('freqListSelect');
+  var btn = document.getElementById('freqDeleteBtn');
+  if(!sel || !sel.value){
+    alert('삭제할 주파수를 먼저 선택해 주세요.');
+    return;
+  }
+  if(pendingDeleteFreqId === sel.value){
+    clearTimeout(pendingDeleteFreqTimeout);
+    pendingDeleteFreqId = null;
+    if(btn) btn.textContent = '삭제';
+    deleteFreqEntry(sel.value);
+    return;
+  }
+  pendingDeleteFreqId = sel.value;
+  if(btn) btn.textContent = '한번 더 누르면 삭제';
+  pendingDeleteFreqTimeout = setTimeout(function(){
+    pendingDeleteFreqId = null;
+    if(btn) btn.textContent = '삭제';
+  }, 3000);
+}
+
+function buildFreqOptionsHTML(){
+  var list = loadFreqs();
+  var html = '<option value="">저장된 주파수 선택</option>';
+  html += list.map(function(f){
+    return '<option value="'+attrEscape(f.freq)+'">'+escapeHtml(f.freq)+' MHz</option>';
+  }).join('');
+  return html;
+}
+
+function fillFreqFromSelect(selectEl){
+  if(!selectEl.value) return;
+  var row = selectEl.closest('.freq-row');
+  var input = row ? row.querySelector('.freqInput') : null;
+  if(input) input.value = selectEl.value;
+  selectEl.value = '';
+}
+
+function renderRefSysOptions(selectedId){
+  var list = loadSystems();
+  var sel = document.getElementById('refSysSelect');
+  var empty = document.getElementById('quickSysEmpty');
+  if(!sel) return;
+  var prevValue = selectedId !== undefined ? selectedId : sel.value;
+  var html = '<option value="">직접입력</option>';
+  html += list.map(function(s){
+    return '<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>';
+  }).join('');
+  sel.innerHTML = html;
+  var stillExists = list.some(function(s){ return s.id === prevValue; });
+  sel.value = stillExists ? prevValue : '';
+  if(empty) empty.style.display = list.length === 0 ? 'block' : 'none';
+}
+
+function onRefSysSelectChange(){
+  var sel = document.getElementById('refSysSelect');
+  var id = sel.value;
+  if(!id) return;
+  var sys = loadSystems().find(function(s){ return s.id === id; });
+  if(!sys) return;
+  setDMS('lat1', sys.lat);
+  setDMS('lon1', sys.lon);
+}
+
+function markRefSysManual(){
+  var sel = document.getElementById('refSysSelect');
+  if(sel) sel.value = '';
+}
+
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  var d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ---------------- 대한민국 기상청 전용 LCC 격자 변환 처리 공식 ----------------
+var NX = 149, NY = 253;
+var Re = 6371.00877 / 5.072;
+var grid_dep = 5.072;
+var grid_slat1 = 30.0, grid_slat2 = 60.0;
+var grid_olon = 126.0, grid_olat = 38.0;
+var grid_xo = 43, grid_yo = 136;
+
+function dfs_xy_conv(lat, lon) {
+  var DEGRAD = Math.PI / 180.0;
+  var re = Re;
+  var slat1 = grid_slat1 * DEGRAD;
+  var slat2 = grid_slat2 * DEGRAD;
+  var olon = grid_olon * DEGRAD;
+  var olat = grid_olat * DEGRAD;
+
+  var sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+  sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+  var sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+  sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+  var ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
+  ro = re * sf / Math.pow(ro, sn);
+
+  var ra = Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5);
+  ra = re * sf / Math.pow(ra, sn);
+  var theta = lon * DEGRAD - olon;
+  if (theta > Math.PI) theta -= 2.0 * Math.PI;
+  if (theta < -Math.PI) theta += 2.0 * Math.PI;
+  theta *= sn;
+
+  var x = Math.floor(ra * Math.sin(theta) + grid_xo + 0.5);
+  var y = Math.floor(ro - ra * Math.cos(theta) + grid_yo + 0.5);
+  return {x: x, y: y};
+}
+
+// 기상청 하늘상태(SKY) 및 강수형태(PTY) 기반의 날씨 텍스트 보정 매핑
+function getKmaWeatherDesc(pty, sky) {
+  var ptyVal = parseInt(pty) || 0;
+  var skyVal = parseInt(sky) || 1;
+  if (ptyVal === 1) return "비";
+  if (ptyVal === 2) return "비/눈";
+  if (ptyVal === 3) return "눈";
+  if (ptyVal === 4) return "소나기";
+  if (skyVal === 1) return "맑음";
+  if (skyVal === 3) return "구름많음";
+  if (skyVal === 4) return "흐림";
+  return "흐림";
+}
+
+function getGlobalWeatherDesc(code) {
+  if (code === 0) return "맑음";
+  if (code === 1 || code === 2 || code === 3) return "구름조금";
+  if (code === 45 || code === 48) return "안개";
+  if (code === 51 || code === 53 || code === 55) return "이슬비";
+  if (code === 61 || code === 63 || code === 65) return "비";
+  if (code === 71 || code === 73 || code === 75) return "눈";
+  if (code === 80 || code === 81 || code === 82) return "소나기";
+  if (code === 95 || code === 96 || code === 99) return "뇌우";
+  return "흐림";
+}
+
+// ---------------- 카카오맵 기반 동적 미니 지도 렌더링 시스템 ----------------
+function renderMiniMap(lat, lon) {
+  var container = document.getElementById('miniMap');
+  container.innerHTML = ''; // 이전 맵 컨텐츠 초기화
+  
+  if (activeMap) {
+    activeMap.remove();
+    activeMap = null;
   }
 
-  // 실제 지도 렌더링 함수
-  function displayKakaoMap(lat, lng) {
-    kakao.maps.load(() => {
-      const container = document.getElementById('map');
-      const coords = new kakao.maps.LatLng(lat, lng);
-      
-      const options = {
-        center: coords,
-        level: 3
+  var kakaoKey = localStorage.getItem('kakao_api_key') || '';
+
+  if (kakaoKey) {
+    // 1. 카카오맵 API 로드 및 객체 렌더링
+    if (typeof kakao !== 'undefined' && kakao.maps) {
+      initKakaoMap(lat, lon);
+    } else {
+      // 카카오 맵 스크립트가 아직 없는 경우 동적으로 주입하여 연동 실행
+      var script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false`;
+      script.onload = function() {
+        kakao.maps.load(function() {
+          initKakaoMap(lat, lon);
+        });
       };
-
-      const map = new kakao.maps.Map(container, options);
-
-      // 마커 추가
-      const marker = new kakao.maps.Marker({
-        map: map,
-        position: coords
-      });
-
-      map.relayout();
-      map.setCenter(coords);
-    });
+      document.head.appendChild(script);
+    }
+  } else {
+    // 2. 카카오 키가 없을 시 글로벌 Leaflet OSM 연동 구동
+    initLeafletMap(lat, lon);
   }
+}
 
-  // 기상청 날씨 데이터 호출 기능
-  function getWeatherData() {
-    const weatherKey = localStorage.getItem('weather_api_key');
-    const resultBox = document.getElementById('weather-result');
+function initKakaoMap(lat, lon) {
+  var container = document.getElementById('miniMap');
+  var options = {
+    center: new kakao.maps.LatLng(lat, lon),
+    level: 4
+  };
+  var map = new kakao.maps.Map(container, options);
+  
+  // 줌인/아웃 휠 방지 기능 (모바일 기기 스크롤 방해 차단)
+  map.setZoomable(true);
 
-    if (!weatherKey) {
-      resultBox.innerText = "설정 탭에서 기상청 일반인증키를 먼저 저장해 주세요.";
-      return;
-    }
+  var markerPosition  = new kakao.maps.LatLng(lat, lon); 
+  var marker = new kakao.maps.Marker({
+    position: markerPosition
+  });
+  marker.setMap(map);
+}
 
-    if (!currentLat || !currentLng) {
-      resultBox.innerText = "먼저 주소 검색을 완료하여 기준 위치(좌표)를 설정해 주세요.";
-      return;
-    }
+function initLeafletMap(lat, lon) {
+  activeMap = L.map('miniMap', {
+    center: [lat, lon],
+    zoom: 14,
+    zoomControl: false,
+    attributionControl: false
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(activeMap);
+  L.marker([lat, lon]).addTo(activeMap);
+}
 
-    const nx = 60;
-    const ny = 127;
+// ---------------- 한국 우선 하이브리드 자동 데이터 조회 메인 함수 ----------------
+async function fetchWeatherAndAddress(lat, lon) {
+  var kakaoKey = localStorage.getItem('kakao_api_key') || '';
+  var kmaKey = localStorage.getItem('kma_api_key') || '';
 
-    const today = new Date();
-    const baseDate = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
-    const baseTime = "0500"; 
-
-    resultBox.innerText = "날씨 데이터를 가져오는 중...";
-
-    const baseUrl = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst";
-    const params = new URLSearchParams({
-      serviceKey: weatherKey,
-      pageNo: '1',
-      numOfRows: '10',
-      dataType: 'JSON',
-      base_date: baseDate,
-      base_time: baseTime,
-      nx: nx,
-      ny: ny
-    });
-
-    fetch(`${baseUrl}?${params.toString()}`)
-      .then(response => {
-        if (!response.ok) throw new Error("네트워크 응답 오류");
-        return response.json();
-      })
-      .then(data => {
-        if (data.response && data.response.header.resultCode === "00") {
-          const items = data.response.body.items.item;
-          let outputText = `📍 서울 기준 날씨 예보 (발표일자: ${baseDate})\n`;
-          items.forEach(item => {
-            if (item.category === "TMP") outputText += `• 기온: ${item.fcstValue}°C\n`;
-            if (item.category === "SKY") {
-              let skyStatus = "맑음";
-              if (item.fcstValue === "3") skyStatus = "구름많음";
-              if (item.fcstValue === "4") skyStatus = "흐림";
-              outputText += `• 하늘상태: ${skyStatus}\n`;
-            }
-          });
-          resultBox.innerText = outputText;
-        } else {
-          const errMsg = data.response ? data.response.header.resultMsg : "API 설정 미승인 또는 대기 상태";
-          resultBox.innerText = `❌ 오류 발생: ${errMsg}\n(승인 대기 중이거나 키 문제일 수 있습니다.)`;
+  // 1. 역지오코딩 상세 주소 조회 (카카오 로컬 vs 글로벌 OSM)
+  if (kakaoKey) {
+    try {
+      var kakaoUrl = `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lon}&y=${lat}`;
+      var kRes = await fetch(kakaoUrl, {
+        headers: { 'Authorization': 'KakaoAK ' + kakaoKey }
+      });
+      if (kRes.ok) {
+        var kData = await kRes.json();
+        if (kData && kData.documents && kData.documents[0]) {
+          var doc = kData.documents[0];
+          var roadAddr = doc.road_address ? doc.road_address.address_name : '';
+          var landAddr = doc.address ? doc.address.address_name : '';
+          document.getElementById('addrVal').value = roadAddr || landAddr || '주소 식별 불가';
         }
-      })
-      .catch(error => {
-        resultBox.innerText = `❌ 연결 실패: 인증키 승인 대기 시간이 필요하거나 네트워크 환경을 확인해 주세요.`;
-        console.error(error);
-      });
+      }
+    } catch (e) {
+      console.warn("카카오 주소 변환 API 실패, 글로벌 백업 가동:", e);
+      await fetchGlobalAddress(lat, lon);
+    }
+  } else {
+    await fetchGlobalAddress(lat, lon);
   }
+
+  // 2. 날씨 정보 수집 (기상청 초단기실황 vs 글로벌 Open-Meteo)
+  if (kmaKey) {
+    try {
+      var now = new Date();
+      // 기상청 데이터는 매시 40분 이후에 안전하게 서버가 갱신됩니다.
+      var curMin = now.getMinutes();
+      if (curMin < 40) {
+        now.setHours(now.getHours() - 1);
+      }
+      var baseDateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+      var baseTimeStr = String(now.getHours()).padStart(2, '0') + '00';
+
+      var kmaGrid = dfs_xy_conv(lat, lon);
+      
+      var kmaUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
+      var kmaRes = await fetch(kmaUrl);
+      if (kmaRes.ok) {
+        var kmaData = await kmaRes.json();
+        if (kmaData && kmaData.response && kmaData.response.body && kmaData.response.body.items) {
+          var items = kmaData.response.body.items.item || [];
+          var temp = "", humid = "", pty = "", sky = "1";
+          
+          items.forEach(function(item){
+            if (item.category === "T1H") temp = parseFloat(item.obsrValue).toFixed(1);
+            if (item.category === "REH") humid = Math.round(parseFloat(item.obsrValue));
+            if (item.category === "PTY") pty = item.obsrValue;
+          });
+
+          var skyUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
+          try {
+            var skyRes = await fetch(skyUrl);
+            if (skyRes.ok) {
+              var skyData = await skyRes.json();
+              var skyItems = skyData.response.body.items.item || [];
+              var matchedSky = skyItems.find(function(it){ return it.category === "SKY"; });
+              if (matchedSky) sky = matchedSky.fcstValue;
+            }
+          } catch(e) {}
+
+          document.getElementById('tempInput').value = temp;
+          document.getElementById('humidInput').value = humid;
+          document.getElementById('weatherInput').value = getKmaWeatherDesc(pty, sky);
+        }
+      }
+    } catch (e) {
+      console.warn("기상청 API 조회 실패, 글로벌 기상으로 백업:", e);
+      await fetchGlobalWeather(lat, lon);
+    }
+  } else {
+    await fetchGlobalWeather(lat, lon);
+  }
+}
+
+// 글로벌 주소 백업 API
+async function fetchGlobalAddress(lat, lon) {
+  try {
+    var addrUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=ko`;
+    var aRes = await fetch(addrUrl, { headers: { 'Accept-Language': 'ko' } });
+    if (aRes.ok) {
+      var aData = await aRes.json();
+      if (aData && aData.address) {
+        var addr = aData.address;
+        var partProvince = addr.province || addr.city || addr.state || '';
+        var partCity = addr.city_district || addr.borough || addr.district || addr.county || '';
+        var partRoad = addr.road || addr.suburb || addr.neighbourhood || '';
+        var partBldg = addr.building || addr.house_number || '';
+        
+        var combinedAddr = [partProvince, partCity, partRoad, partBldg].filter(function(v){ return v.trim() !== ''; }).join(' ');
+        if (!combinedAddr.trim() && aData.display_name) combinedAddr = aData.display_name;
+        document.getElementById('addrVal').value = combinedAddr || '주소 식별 불가';
+      }
+    }
+  } catch (e) {
+    console.warn("글로벌 주소 수집 불가:", e);
+  }
+}
+
+// 글로벌 기상 백업 API (Open-Meteo)
+async function fetchGlobalWeather(lat, lon) {
+  try {
+    var weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
+    var wRes = await fetch(weatherUrl);
+    if (wRes.ok) {
+      var wData = await wRes.json();
+      if (wData && wData.current) {
+        document.getElementById('tempInput').value = wData.current.temperature_2m !== undefined ? wData.current.temperature_2m.toFixed(1) : '';
+        document.getElementById('humidInput').value = wData.current.relative_humidity_2m !== undefined ? Math.round(wData.current.relative_humidity_2m) : '';
+        if (wData.current.weather_code !== undefined) {
+          document.getElementById('weatherInput').value = getGlobalWeatherDesc(wData.current.weather_code);
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+// ---------------- 메인 계산 루프 ----------------
+function calc(){
+  var lat1 = getDD('lat1');
+  var lon1 = getDD('lon1');
+  var lat2 = getDD('lat2');
+  var lon2 = getDD('lon2');
+
+  var errEl = document.getElementById('errMsg');
+  if(isNaN(lat1)||isNaN(lon1)||isNaN(lat2)||isNaN(lon2)){
+    errEl.classList.add('show');
+    document.getElementById('result').classList.remove('show');
+    return;
+  }
+  errEl.classList.remove('show');
+
+  // 계산 버튼 작동 시간 기록 생성
+  var d = new Date();
+  var formatTime = d.getFullYear() + '-' + 
+                   String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(d.getDate()).padStart(2, '0') + ' ' + 
+                   String(d.getHours()).padStart(2, '0') + ':' + 
+                   String(d.getMinutes()).padStart(2, '0') + ':' + 
+                   String(d.getSeconds()).padStart(2, '0');
+
+  document.getElementById('measTimeVal').textContent = formatTime;
+
+  var R = 6371000; 
+  var phi1 = toRad(lat1), phi2 = toRad(lat2);
+  var dPhi = toRad(lat2-lat1);
+  var dLambda = toRad(lon2-lon1);
+
+  // 거리
+  var a = Math.sin(dPhi/2)*Math.sin(dPhi/2) +
+          Math.cos(phi1)*Math.cos(phi2)*Math.sin(dLambda/2)*Math.sin(dLambda/2);
+  var c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  var dist = R*c;
+
+  // 진방위
+  var y = Math.sin(dLambda)*Math.cos(phi2);
+  var x = Math.cos(phi1)*Math.sin(phi2) - Math.sin(phi1)*Math.cos(phi2)*Math.cos(dLambda);
+  var brng = (toDeg(Math.atan2(y,x))+360)%360;
+
+  var backBrng = (brng+180)%360;
+
+  var nearest30 = Math.round(brng/30)*30 % 360;
+  var dev30 = brng - nearest30;
+  if(dev30 > 180) dev30 -= 360;
+  if(dev30 < -180) dev30 += 360;
+
+  document.getElementById('distVal').textContent = (dist/1000).toFixed(1);
+  document.getElementById('brgVal').textContent = brng.toFixed(1);
+
+  drawCompass(brng);
+  document.getElementById('result').classList.add('show');
+
+  var elevManual = parseFloat(document.getElementById('elevInput').value);
+  var elevation = isNaN(elevManual) ? null : elevManual;
+
+  lastResult = {
+    lat1: lat1, lon1: lon1, lat2: lat2, lon2: lon2,
+    distKm: dist/1000, bearing: brng, nearest30: nearest30, dev30: dev30,
+    backBrng: backBrng, time: d.toISOString(),
+    elevation: elevation, address: null
+  };
+
+  document.getElementById('elevVal').textContent = elevation !== null ? elevation.toFixed(1) + ' m' : '미입력';
+  document.getElementById('addrVal').value = '';
+  document.getElementById('tempInput').value = '';
+  document.getElementById('humidInput').value = '';
+  document.getElementById('weatherInput').value = '';
+  clearSiteType();
+  clearFreqRows();
+
+  var naverUrl = 'https://map.naver.com/p?c=' + lon2.toFixed(7) + ',' + lat2.toFixed(7) + ',15,0,0,0,dh';
+  var kakaoUrl = 'https://map.kakao.com/link/map/발사장소,' + lat2.toFixed(7) + ',' + lon2.toFixed(7);
+  document.getElementById('naverMapLink').href = naverUrl;
+  document.getElementById('kakaoMapLink').href = kakaoUrl;
+
+  // 지도 생성 (카카오 우선 로드 적용)
+  renderMiniMap(lat2, lon2);
+
+  // 백그라운드 서버 정보 획득
+  fetchWeatherAndAddress(lat2, lon2);
+}
+
+var currentSiteType = null;
+
+function setSiteType(type){
+  currentSiteType = type;
+  document.getElementById('siteTypeFixedBtn').classList.toggle('active', type === '고정');
+  document.getElementById('siteTypeZoneBtn').classList.toggle('active', type === '권역');
+}
+
+function clearSiteType(){
+  currentSiteType = null;
+  document.getElementById('siteTypeFixedBtn').classList.remove('active');
+  document.getElementById('siteTypeZoneBtn').classList.remove('active');
+}
+
+function addFreqRow(freq, txStrength, rxStrength, bearing){
+  var wrap = document.createElement('div');
+  wrap.className = 'freq-row';
+  wrap.style.cssText = 'background:#0a0f15;border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:8px;';
+  wrap.innerHTML =
+    '<div class="row" style="margin-bottom:8px;">' +
+      '<div class="field"><select class="freqSelect" onchange="fillFreqFromSelect(this)">'+buildFreqOptionsHTML()+'</select></div>' +
+    '</div>' +
+    '<div class="row" style="margin-bottom:8px;">' +
+      '<div class="field"><input type="text" inputmode="decimal" placeholder="주파수 (MHz) 직접입력" class="freqInput" value="'+attrEscape(freq)+'"></div>' +
+    '</div>' +
+    '<div class="row" style="margin-bottom:8px;">' +
+      '<div class="field"><input type="text" placeholder="송신세기 dBm (예: -110)" class="txStrengthInput" value="'+attrEscape(txStrength)+'"></div>' +
+      '<div class="field"><input type="text" placeholder="수신세기 dBm (예: -110)" class="rxStrengthInput" value="'+attrEscape(rxStrength)+'"></div>' +
+    '</div>' +
+    '<div class="row" style="margin-bottom:0; align-items:center;">' +
+      '<div class="field"><input type="text" inputmode="decimal" placeholder="측정 방위각 (°)" class="bearingInput" value="'+attrEscape(bearing)+'"></div>' +
+      '<button type="button" class="icon-btn danger" style="width:44px; flex-shrink:0;" onclick="this.closest(\'.freq-row\').remove()">✕</button>' +
+    '</div>';
+  document.getElementById('freqMeasList').appendChild(wrap);
+}
+
+function attrEscape(str){
+  if(str === undefined || str === null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function clearFreqRows(){
+  document.getElementById('freqMeasList').innerHTML = '';
+  addFreqRow();
+}
+
+function getFreqMeasurements(){
+  var rows = document.querySelectorAll('#freqMeasList .freq-row');
+  var out = [];
+  rows.forEach(function(r){
+    var freq = r.querySelector('.freqInput').value.trim();
+    var txStrength = r.querySelector('.txStrengthInput').value.trim();
+    var rxStrength = r.querySelector('.rxStrengthInput').value.trim();
+    var bearing = r.querySelector('.bearingInput').value.trim();
+    if(freq || txStrength || rxStrength || bearing){
+      out.push({freq: freq, txStrength: txStrength, rxStrength: rxStrength, bearing: bearing});
+    }
+  });
+  return out;
+}
+
+function saveLog(){
+  if(!lastResult){
+    alert('먼저 계산을 실행해 주세요.');
+    return;
+  }
+  if(!currentSiteType){
+    alert('저장하기 전에 "발사장소 구분"에서 고정 또는 권역을 선택해 주세요.');
+    return;
+  }
+  var sysName = '';
+  var sysList = loadSystems();
+  var match = sysList.find(function(s){
+    return Math.abs(s.lat - lastResult.lat1) < 0.0001 && Math.abs(s.lon - lastResult.lon1) < 0.0001;
+  });
+  if(match) sysName = match.name;
+
+  var addrInput = document.getElementById('addrVal');
+  var manualAddr = addrInput ? addrInput.value.trim() : '';
+  var temp = document.getElementById('tempInput').value.trim();
+  var humid = document.getElementById('humidInput').value.trim();
+  var weather = document.getElementById('weatherInput').value.trim();
+  var measurements = getFreqMeasurements();
+  var entryToSave = Object.assign({}, lastResult, {
+    address: manualAddr || null,
+    temp: temp || null,
+    humid: humid || null,
+    weather: weather || null,
+    siteType: currentSiteType,
+    measurements: measurements
+  });
+
+  var logs = loadLogs();
+  logs.unshift(Object.assign({}, entryToSave, {id: Date.now().toString(), sysName: sysName}));
+  saveLogs(logs);
+
+  var msg = document.getElementById('saveLogMsg');
+  if(msg){
+    msg.style.display = 'block';
+    clearTimeout(saveLogMsgTimeout);
+    saveLogMsgTimeout = setTimeout(function(){ msg.style.display = 'none'; }, 3000);
+  }
+}
+var saveLogMsgTimeout = null;
+
+function dmsStr(dd, isLat){
+  var dms = ddToDMS(dd);
+  var hemi = isLat ? (dd>=0?'N':'S') : (dd>=0?'E':'W');
+  return Math.abs(dms.d)+'°'+dms.m+"'"+dms.s.toFixed(1)+'"'+hemi;
+}
+
+function renderLogFilterOptions(allLogs){
+  var sel = document.getElementById('logFilterSys');
+  if(!sel) return;
+  var prev = sel.value;
+  var namesSet = {};
+  allLogs.forEach(function(l){ namesSet[l.sysName || ''] = true; });
+  var names = Object.keys(namesSet);
+  var html = '<option value="">전체 시스템</option>';
+  names.forEach(function(n){
+    var label = n === '' ? '(직접입력)' : n;
+    html += '<option value="'+attrEscape(n)+'">'+escapeHtml(label)+'</option>';
+  });
+  sel.innerHTML = html;
+  if(names.indexOf(prev) > -1) sel.value = prev;
+}
+
+function applyLogFilters(allLogs){
+  var fromVal = document.getElementById('logFilterDateFrom').value;
+  var toVal = document.getElementById('logFilterDateTo').value;
+  var sysVal = document.getElementById('logFilterSys').value;
+  return allLogs.filter(function(l){
+    if(fromVal || toVal){
+      var d = new Date(l.time);
+      var dStr = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      if(fromVal && dStr < fromVal) return false;
+      if(toVal && dStr > toVal) return false;
+    }
+    if(sysVal !== '' && (l.sysName || '') !== sysVal) return false;
+    return true;
+  });
+}
+
+function clearLogFilters(){
+  document.getElementById('logFilterDateFrom').value = '';
+  document.getElementById('logFilterDateTo').value = '';
+  document.getElementById('logFilterSys').value = '';
+  renderLogList();
+}
+
+function exportFilteredLogs(){
+  var filtered = applyLogFilters(loadLogs());
+  var rows = buildLogRows(filtered);
+  var baseName = '방위각거리_기록_' + new Date().toISOString().slice(0,10).replace(/-/g,'');
+  exportAsCSV(rows, baseName);
+}
+
+function scrollToTop(){
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+window.addEventListener('scroll', function(){
+  var btn = document.getElementById('scrollTopBtn');
+  if(!btn) return;
+  if(window.scrollY > 400) btn.classList.add('show');
+  else btn.classList.remove('show');
+});
+
+function renderLogList(){
+  var allLogs = loadLogs();
+  var el = document.getElementById('logList');
+  var empty = document.getElementById('logEmpty');
+  var clearBtn = document.getElementById('clearAllBtn');
+  var exportCsvBtn = document.getElementById('exportCsvBtn');
+
+  renderLogFilterOptions(allLogs);
+  clearBtn.style.display = allLogs.length === 0 ? 'none' : 'block';
+
+  var logs = applyLogFilters(allLogs);
+
+  if(logs.length === 0){
+    el.innerHTML = '';
+    empty.style.display = 'block';
+    empty.textContent = allLogs.length === 0 ? '저장된 기록이 없습니다.' : '조건에 맞는 기록이 없습니다.';
+    exportCsvBtn.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  exportCsvBtn.style.display = 'block';
+  el.innerHTML = logs.map(function(l){
+    var d = new Date(l.time);
+    var timeStr = (d.getMonth()+1)+'/'+d.getDate()+' '+
+      String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    var refCoord = dmsStr(l.lat1,true)+' '+dmsStr(l.lon1,false);
+    var txCoord = dmsStr(l.lat2,true)+' '+dmsStr(l.lon2,false);
+    var naverUrl = 'https://map.naver.com/p?c=' + l.lon2.toFixed(7) + ',' + l.lat2.toFixed(7) + ',15,0,0,0,dh';
+    var kakaoUrl = 'https://map.kakao.com/link/map/발사장소,' + l.lat2.toFixed(7) + ',' + l.lon2.toFixed(7);
+    return '<div class="log-item">' +
+      '<div class="log-top">' +
+        '<span class="log-sysname">'+(l.sysName ? escapeHtml(l.sysName) : '기준점')+'</span>' +
+        '<span class="log-time">'+timeStr+'</span>' +
+      '</div>' +
+      '<div class="log-metrics"><span>거리 <b>'+l.distKm.toFixed(1)+'km</b></span><span>방위 <b>'+l.bearing.toFixed(1)+'°</b></span></div>' +
+      '<div class="log-coords">기준 '+refCoord+'<br>발사 '+txCoord +
+        (l.elevation!=null ? '<br>고도 '+l.elevation.toFixed(1)+'m' : '') +
+        (l.address ? '<br>주소 '+escapeHtml(l.address) : '') +
+        ((l.temp || l.humid || l.weather) ? '<br>기상 '+(l.temp||'-')+'°C / '+(l.humid||'-')+'% / '+(l.weather||'-') : '') +
+        (l.measurements && l.measurements.length ? '<br>측정값 '+escapeHtml(l.measurements.map(function(m){
+          return (m.freq||'-')+'MHz Tx '+(m.txStrength||'-')+'dBm Rx '+(m.rxStrength||'-')+'dBm '+(m.bearing||'-')+'°';
+        }).join(', ')) : '') +
+      '</div>' +
+      '<div class="map-link-row" style="margin-top:10px;">' +
+        '<a class="map-link-btn" href="'+naverUrl+'" target="_blank" rel="noopener">네이버지도</a>' +
+        '<a class="map-link-btn" href="'+kakaoUrl+'" target="_blank" rel="noopener">카카오맵</a>' +
+      '</div>' +
+      '<button class="log-del" onclick="deleteLog(\''+l.id+'\')">기록 삭제</button>' +
+    '</div>';
+  }).join('');
+}
+
+function normalizeFreqKey(freq){
+  if(freq === undefined || freq === null) return '';
+  var s = String(freq).trim();
+  if(s === '') return '';
+  var n = parseFloat(s);
+  if(isNaN(n)) return s;
+  return (Math.round(n*100)/100).toString();
+}
+
+function dfErrorDeg(measuredBearing, trueBearing){
+  var mb = parseFloat(measuredBearing);
+  if(isNaN(mb) || trueBearing === undefined || trueBearing === null) return '';
+  var diff = mb - trueBearing;
+  while(diff > 180) diff -= 360;
+  while(diff <= -180) diff += 360;
+  return diff.toFixed(1);
+}
+
+function buildLogRows(logsOverride){
+  var logs = logsOverride || loadLogs();
+  var ordered = logs.slice().reverse();
+
+  var freqKeys = [];
+  var seen = {};
+  ordered.forEach(function(l){
+    (l.measurements || []).forEach(function(m){
+      var key = normalizeFreqKey(m.freq);
+      if(key && !seen[key]){ seen[key] = true; freqKeys.push(key); }
+    });
+  });
+  freqKeys.sort(function(a,b){
+    var na = parseFloat(a), nb = parseFloat(b);
+    if(isNaN(na) || isNaN(nb)) return a.localeCompare(b);
+    return na - nb;
+  });
+
+  return ordered.map(function(l){
+    var d = new Date(l.time);
+    var dateStr = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+
+      ' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    var tx = ddToDMS(l.lat2), txLon = ddToDMS(l.lon2);
+    var txLatDMS = Math.abs(tx.d)+'°'+tx.m+"'"+tx.s.toFixed(1)+'"'+(l.lat2>=0?'N':'S');
+    var txLonDMS = Math.abs(txLon.d)+'°'+txLon.m+"'"+txLon.s.toFixed(1)+'"'+(l.lon2>=0?'E':'W');
+
+    var bearingRounded = (l.bearing!=null && !isNaN(l.bearing)) ? Math.round(l.bearing) : 0;
+    var distRounded = (l.distKm!=null && !isNaN(l.distKm)) ? Math.round(l.distKm) : 0;
+    var siteTag = (l.siteType || '고정') + '(' + bearingRounded + ', ' + distRounded + ')';
+
+    var row = {
+      '일시': dateStr,
+      '시스템명': l.sysName || '',
+      '발사장소 구분': siteTag,
+      '발사장소 위도(DMS)': txLatDMS,
+      '발사장소 경도(DMS)': txLonDMS,
+      '해발고(m)': l.elevation!=null ? Number(l.elevation.toFixed(1)) : '',
+      '거리(km)': Number(l.distKm.toFixed(1)),
+      '진방위(°)': Number(l.bearing.toFixed(1))
+    };
+
+    var measByKey = {};
+    (l.measurements || []).forEach(function(m){
+      var key = normalizeFreqKey(m.freq);
+      if(key) measByKey[key] = m;
+    });
+
+    freqKeys.forEach(function(key){
+      var m = measByKey[key];
+      row[key+'MHz 송신세기'] = m ? fmt1(m.txStrength) : '';
+      row[key+'MHz 수신세기'] = m ? fmt1(m.rxStrength) : '';
+      row[key+'MHz 방탐값'] = m ? fmt1(m.bearing) : '';
+      row[key+'MHz 방탐오차'] = m ? dfErrorDeg(m.bearing, l.bearing) : '';
+    });
+
+    row['온도(°C)'] = l.temp!=null ? fmt1(l.temp) : '';
+    row['습도(%)'] = l.humid!=null ? fmt1(l.humid) : '';
+    row['날씨'] = l.weather || '';
+    row['주소'] = l.address || '';
+
+    return row;
+  });
+}
+
+function fmt1(v){
+  if(v === undefined || v === null || v === '') return '-';
+  var n = parseFloat(v);
+  if(isNaN(n)) return String(v);
+  return n.toFixed(1);
+}
+
+function triggerDownload(blob, fname){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = fname;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 300);
+}
+
+function exportAsCSV(rows, baseName){
+  if(rows.length === 0){
+    alert('내보낼 기록이 없습니다.');
+    return;
+  }
+  var headers = Object.keys(rows[0]);
+  var lines = [headers.join(',')];
+  rows.forEach(function(r){
+    lines.push(headers.map(function(h){
+      var v = r[h]===null||r[h]===undefined ? '' : String(r[h]);
+      v = v.replace(/"/g,'""');
+      if(v.indexOf(',')>-1 || v.indexOf('"')>-1 || v.indexOf('\n')>-1) v = '"'+v+'"';
+      return v;
+    }).join(','));
+  });
+  var csv = '\uFEFF' + lines.join('\r\n');
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  triggerDownload(blob, baseName + '.csv');
+}
+
+function deleteLog(id){
+  var logs = loadLogs().filter(function(l){ return l.id !== id; });
+  saveLogs(logs);
+  renderLogList();
+}
+
+var pendingClearAll = false;
+var pendingClearAllTimeout = null;
+
+function clearAllLogs(){
+  var btn = document.getElementById('clearAllBtn');
+  if(pendingClearAll){
+    clearTimeout(pendingClearAllTimeout);
+    pendingClearAll = false;
+    if(btn) btn.textContent = '전체 기록 삭제';
+    saveLogs([]);
+    renderLogList();
+    return;
+  }
+  pendingClearAll = true;
+  if(btn) btn.textContent = '한번 더 누르면 전체 삭제';
+  pendingClearAllTimeout = setTimeout(function(){
+    pendingClearAll = false;
+    if(btn) btn.textContent = '전체 기록 삭제';
+  }, 3000);
+}
+
+function drawCompass(bearing){
+  var svg = document.getElementById('compass');
+  var cx=90, cy=90, r=78;
+  var html = '';
+  html += '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="#223040" stroke-width="1.5"/>';
+
+  for(var deg=0; deg<360; deg+=30){
+    var rad = toRad(deg-90);
+    var x1 = cx + (r-8)*Math.cos(rad);
+    var y1 = cy + (r-8)*Math.sin(rad);
+    var x2 = cx + r*Math.cos(rad);
+    var y2 = cy + r*Math.sin(rad);
+    html += '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#3a4a5c" stroke-width="1.5"/>';
+    var tx = cx + (r-20)*Math.cos(rad);
+    var ty = cy + (r-20)*Math.sin(rad);
+    html += '<text x="'+tx+'" y="'+(ty+4)+'" font-size="10" fill="#7c8a99" font-family="SF Mono, monospace" text-anchor="middle">'+deg+'</text>';
+  }
+
+  html += '<text x="'+cx+'" y="'+(cy-r+22)+'" font-size="11" fill="#3ad6c2" font-family="SF Mono, monospace" text-anchor="middle" font-weight="700">N</text>';
+
+  var rad = toRad(bearing-90);
+  var nx = cx + (r-14)*Math.cos(rad);
+  var ny = cy + (r-14)*Math.sin(rad);
+  html += '<line x1="'+cx+'" y1="'+cy+'" x2="'+nx+'" y2="'+ny+'" stroke="#3ad6c2" stroke-width="2.5" stroke-linecap="round"/>';
+  html += '<circle cx="'+cx+'" cy="'+cy+'" r="4" fill="#3ad6c2"/>';
+  html += '<circle cx="'+nx+'" cy="'+ny+'" r="4" fill="#3ad6c2"/>';
+
+  svg.innerHTML = html;
+}
+
+function wireManualEditListener(prefix, callback){
+  ['d','m','s','D','M','S'].forEach(function(sfx){
+    var el = document.getElementById(prefix+sfx);
+    if(el) el.addEventListener('input', callback);
+  });
+}
+
+renderRefSysOptions();
+wireManualEditListener('lat1', markRefSysManual);
+wireManualEditListener('lon1', markRefSysManual);
+addFreqRow();
 </script>
 </body>
 </html>

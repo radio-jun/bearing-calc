@@ -333,10 +333,10 @@
       <label>해발고도 (GPS 측정값, m)</label>
       <div class="row" style="margin-bottom:0;">
         <div class="field">
-          <input id="elevInput" type="text" inputmode="decimal" placeholder="GPS로 자동입력 또는 직접 입력">
+          <input id="elevInput" type="text" inputmode="decimal" placeholder="GPS 또는 서버에서 자동 조회">
         </div>
       </div>
-      <div class="preset-note" id="elevGpsNote">"현재 위치 사용"으로 GPS 고도가 제공되면 자동 입력됩니다. 미제공 시 직접 입력해 주세요 (정확도가 낮을 수 있어 고도계/지도 확인 권장).</div>
+      <div class="preset-note" id="elevGpsNote">"현재 위치 사용" 시 고도 정보를 수집하며, 기기 GPS 수집 실패 시 외부 지형 데이터 서버를 통해 자동으로 표고를 보완 및 조회합니다.</div>
       <button class="gps-btn" style="margin-top:8px;" onclick="openElevationLookup()">국토정보플랫폼에서 표고 조회 (GPS 안될 때)</button>
     </div>
   </div>
@@ -394,8 +394,8 @@
       <div class="detail-list">
         <div class="detail-row"><span>발사장소 해발고도</span><span id="elevVal">-</span></div>
         <div class="detail-row" style="display:block;">
-          <span style="display:block; margin-bottom:4px;">발사장소 주소 (직접 입력)</span>
-          <input id="addrVal" type="text" placeholder="주소를 직접 입력하세요 (자동 조회 없음)" autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--bg2, #1a1a1a); border:1px solid var(--border, #333); color:var(--text); font-family:var(--sans); font-size:12.5px; padding:8px; border-radius:6px;">
+          <span style="display:block; margin-bottom:4px;">발사장소 주소 (자동/수정 가능)</span>
+          <input id="addrVal" type="text" placeholder="네트워크 연결 시 주소가 자동으로 채워집니다." autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--bg2, #1a1a1a); border:1px solid var(--border, #333); color:var(--text); font-family:var(--sans); font-size:12.5px; padding:8px; border-radius:6px;">
         </div>
       </div>
 
@@ -407,11 +407,15 @@
       <div class="row" style="margin-top:14px; margin-bottom:0;">
         <div class="field">
           <label>기온 (°C)</label>
-          <input id="tempInput" type="text" inputmode="decimal" placeholder="예: 18.5" autocomplete="off">
+          <input id="tempInput" type="text" inputmode="decimal" placeholder="자동 조회됨" autocomplete="off">
         </div>
         <div class="field">
           <label>습도 (%)</label>
-          <input id="humidInput" type="text" inputmode="decimal" placeholder="예: 62" autocomplete="off">
+          <input id="humidInput" type="text" inputmode="decimal" placeholder="자동 조회됨" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>날씨</label>
+          <input id="weatherInput" type="text" placeholder="자동 조회됨" autocomplete="off">
         </div>
       </div>
 
@@ -613,8 +617,6 @@ function switchTab(name){
 }
 function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 
-// 국토지리정보원 국토정보플랫폼(DEM 기반 표고 조회) - 자동 딥링크 파라미터가 확인되지 않아
-// 좌표를 클립보드에 복사해두고 포털을 새 탭으로 열어, 사용자가 직접 검색/확인하도록 안내합니다.
 function openElevationLookup(){
   var lat2 = getDD('lat2'), lon2 = getDD('lon2');
   if(isNaN(lat2) || isNaN(lon2)){
@@ -658,29 +660,57 @@ function useGPS(which){
   }, {enableHighAccuracy:true, timeout:10000, maximumAge:0});
 }
 
-// 발사장소(2번)는 위경도뿐 아니라 GPS 고도(altitude)도 함께 받아야 하므로,
-// 첫 fix에서 고도가 비어 있을 경우 최대 몇 초간 추가로 측위를 계속 시도합니다.
+// Open-Meteo API를 활용한 무상 고도 자동 보정 조회 함수 (백그라운드 비동기)
+async function fetchElevationFromServer(lat, lon) {
+  try {
+    var response = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+    if (!response.ok) return null;
+    var data = await response.json();
+    if (data && data.elevation && data.elevation[0] !== undefined) {
+      return parseFloat(data.elevation[0]);
+    }
+  } catch (e) {
+    console.error("고도 서버 자동 조회 실패:", e);
+  }
+  return null;
+}
+
 function useGPSWithAltitude(){
   var note = document.getElementById('elevGpsNote');
   var origNote = note ? note.textContent : '';
-  if(note) note.textContent = '위치 확인 중... (고도 값을 기다리는 중입니다)';
+  if(note) note.textContent = '위치 확인 및 해발고 고정 시도 중...';
 
   var settled = false;
   var watchId = null;
 
-  var giveUp = function(gotFix){
+  var giveUp = async function(gotFix){
     if(settled) return;
     settled = true;
     if(watchId !== null) navigator.geolocation.clearWatch(watchId);
     if(note) note.textContent = origNote;
+    
+    // GPS 자체 고도가 없는 경우, Open-Meteo 서버에 표고 자동 요청
+    var lat2 = getDD('lat2');
+    var lon2 = getDD('lon2');
+    if (!isNaN(lat2) && !isNaN(lon2)) {
+      if(note) note.textContent = 'GPS 고도 누락으로 서버에서 표고(DEM) 조회 중...';
+      var srvElev = await fetchElevationFromServer(lat2, lon2);
+      if (srvElev !== null) {
+        document.getElementById('elevInput').value = srvElev.toFixed(1);
+        if(note) note.textContent = origNote;
+        return;
+      }
+    }
+    
+    if(note) note.textContent = origNote;
     if(gotFix){
-      alert('이 기기/브라우저는 GPS 고도(altitude) 값을 제공하지 않습니다. 고도 칸에 직접 입력해 주세요.');
+      alert('이 기기는 GPS 고도를 제공하지 않으며 기상 오프라인 상태입니다. 고도를 수동으로 입력해 주세요.');
     }
   };
 
   var timeoutId = setTimeout(function(){ giveUp(true); }, 8000);
 
-  watchId = navigator.geolocation.watchPosition(function(pos){
+  watchId = navigator.geolocation.watchPosition(async function(pos){
     setDMS('lat2', pos.coords.latitude);
     setDMS('lon2', pos.coords.longitude);
     if(pos.coords.altitude !== null && pos.coords.altitude !== undefined){
@@ -691,6 +721,16 @@ function useGPSWithAltitude(){
         if(watchId !== null) navigator.geolocation.clearWatch(watchId);
         if(note) note.textContent = origNote;
         document.getElementById('elevInput').value = pos.coords.altitude.toFixed(1);
+      }
+    } else {
+      // 기기 고도가 null인 경우 즉시 백그라운드 서버 API 요청 처리 시작 가능
+      var srvElev = await fetchElevationFromServer(pos.coords.latitude, pos.coords.longitude);
+      if(srvElev !== null && !settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+        if(note) note.textContent = origNote;
+        document.getElementById('elevInput').value = srvElev.toFixed(1);
       }
     }
   }, function(err){
@@ -949,7 +989,6 @@ function renderRefSysOptions(selectedId){
     return '<option value="'+s.id+'">'+escapeHtml(s.name)+'</option>';
   }).join('');
   sel.innerHTML = html;
-  // 이전에 선택돼 있던 시스템이 목록에 여전히 있으면 유지, 없으면 직접입력으로
   var stillExists = list.some(function(s){ return s.id === prevValue; });
   sel.value = stillExists ? prevValue : '';
   if(empty) empty.style.display = list.length === 0 ? 'block' : 'none';
@@ -958,7 +997,7 @@ function renderRefSysOptions(selectedId){
 function onRefSysSelectChange(){
   var sel = document.getElementById('refSysSelect');
   var id = sel.value;
-  if(!id) return; // 직접입력 선택 시 현재 입력값 그대로 유지
+  if(!id) return;
   var sys = loadSystems().find(function(s){ return s.id === id; });
   if(!sys) return;
   setDMS('lat1', sys.lat);
@@ -971,11 +1010,72 @@ function markRefSysManual(){
 }
 
 function escapeHtml(str){
+  if(str === null || str === undefined) return '';
   var d = document.createElement('div');
   d.textContent = str;
   return d.innerHTML;
 }
 
+// Open-Meteo 날씨 코드 한글 명칭 매핑 함수
+function getWeatherDesc(code) {
+  if (code === 0) return "맑음";
+  if (code === 1 || code === 2 || code === 3) return "구름조금";
+  if (code === 45 || code === 48) return "안개";
+  if (code === 51 || code === 53 || code === 55) return "이슬비";
+  if (code === 61 || code === 63 || code === 65) return "비";
+  if (code === 71 || code === 73 || code === 75) return "눈";
+  if (code === 80 || code === 81 || code === 82) return "소나기";
+  if (code === 95 || code === 96 || code === 99) return "뇌우";
+  return "흐림";
+}
+
+// 실시간 기상 및 주소 자동 채우기 메인 함수 (방위각 계산 시 호출됨)
+async function fetchWeatherAndAddress(lat, lon) {
+  // 1. 기상 조회 (Open-Meteo Forecast)
+  try {
+    var weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
+    var wRes = await fetch(weatherUrl);
+    if (wRes.ok) {
+      var wData = await wRes.json();
+      if (wData && wData.current) {
+        document.getElementById('tempInput').value = wData.current.temperature_2m !== undefined ? wData.current.temperature_2m.toFixed(1) : '';
+        document.getElementById('humidInput').value = wData.current.relative_humidity_2m !== undefined ? Math.round(wData.current.relative_humidity_2m) : '';
+        if (wData.current.weather_code !== undefined) {
+          document.getElementById('weatherInput').value = getWeatherDesc(wData.current.weather_code);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("기상 정보 백그라운드 자동조회 실패:", e);
+  }
+
+  // 2. 한글 역지오코딩 주소 조회 (OpenStreetMap Nominatim)
+  try {
+    var addrUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=ko`;
+    // OSM 서버의 차단을 예방하기 위해 커스텀 요청 구조로 처리
+    var aRes = await fetch(addrUrl, {
+      headers: { 'Accept-Language': 'ko' }
+    });
+    if (aRes.ok) {
+      var aData = await aRes.json();
+      if (aData && aData.address) {
+        var addr = aData.address;
+        var partProvince = addr.province || addr.city || addr.state || '';
+        var partCity = addr.city_district || addr.borough || addr.district || addr.county || '';
+        var partRoad = addr.road || addr.suburb || addr.neighbourhood || '';
+        var partBldg = addr.building || addr.house_number || '';
+        
+        var combinedAddr = [partProvince, partCity, partRoad, partBldg].filter(function(v){ return v.trim() !== ''; }).join(' ');
+        if (!combinedAddr.trim() && aData.display_name) {
+          combinedAddr = aData.display_name;
+        }
+        document.getElementById('addrVal').value = combinedAddr || '주소 식별 불가';
+      }
+    }
+  } catch (e) {
+    console.warn("주소 백그라운드 자동조회 실패:", e);
+  }
+}
 
 function calc(){
   var lat1 = getDD('lat1');
@@ -1007,10 +1107,8 @@ function calc(){
   var x = Math.cos(phi1)*Math.sin(phi2) - Math.sin(phi1)*Math.cos(phi2)*Math.cos(dLambda);
   var brng = (toDeg(Math.atan2(y,x))+360)%360;
 
-  // Back bearing
   var backBrng = (brng+180)%360;
 
-  // nearest 30deg
   var nearest30 = Math.round(brng/30)*30 % 360;
   var dev30 = brng - nearest30;
   if(dev30 > 180) dev30 -= 360;
@@ -1036,6 +1134,7 @@ function calc(){
   document.getElementById('addrVal').value = '';
   document.getElementById('tempInput').value = '';
   document.getElementById('humidInput').value = '';
+  document.getElementById('weatherInput').value = '';
   clearSiteType();
   clearFreqRows();
 
@@ -1043,6 +1142,9 @@ function calc(){
   var kakaoUrl = 'https://map.kakao.com/link/map/발사장소,' + lat2.toFixed(7) + ',' + lon2.toFixed(7);
   document.getElementById('naverMapLink').href = naverUrl;
   document.getElementById('kakaoMapLink').href = kakaoUrl;
+
+  // 계산과 동시에 백그라운드 주소 및 기상 정보 파싱 비동기 호출 수행
+  fetchWeatherAndAddress(lat2, lon2);
 }
 
 var currentSiteType = null;
@@ -1126,11 +1228,13 @@ function saveLog(){
   var manualAddr = addrInput ? addrInput.value.trim() : '';
   var temp = document.getElementById('tempInput').value.trim();
   var humid = document.getElementById('humidInput').value.trim();
+  var weather = document.getElementById('weatherInput').value.trim();
   var measurements = getFreqMeasurements();
   var entryToSave = Object.assign({}, lastResult, {
     address: manualAddr || null,
     temp: temp || null,
     humid: humid || null,
+    weather: weather || null,
     siteType: currentSiteType,
     measurements: measurements
   });
@@ -1249,7 +1353,7 @@ function renderLogList(){
       '<div class="log-coords">기준 '+refCoord+'<br>발사 '+txCoord +
         (l.elevation!=null ? '<br>고도 '+l.elevation.toFixed(1)+'m' : '') +
         (l.address ? '<br>주소 '+escapeHtml(l.address) : '') +
-        ((l.temp || l.humid) ? '<br>기온/습도 '+(l.temp||'-')+'°C / '+(l.humid||'-')+'%' : '') +
+        ((l.temp || l.humid || l.weather) ? '<br>기상 '+(l.temp||'-')+'°C / '+(l.humid||'-')+'% / '+(l.weather||'-') : '') +
         (l.measurements && l.measurements.length ? '<br>측정값 '+escapeHtml(l.measurements.map(function(m){
           return (m.freq||'-')+'MHz Tx '+(m.txStrength||'-')+'dBm Rx '+(m.rxStrength||'-')+'dBm '+(m.bearing||'-')+'°';
         }).join(', ')) : '') +
@@ -1268,8 +1372,7 @@ function normalizeFreqKey(freq){
   var s = String(freq).trim();
   if(s === '') return '';
   var n = parseFloat(s);
-  if(isNaN(n)) return s; // 숫자로 못 읽으면 원문 그대로 열 이름에 사용
-  // 정수면 소수점 없이, 아니면 불필요한 0을 정리해서 표시 (예: 1280, 1280.5)
+  if(isNaN(n)) return s;
   return (Math.round(n*100)/100).toString();
 }
 
@@ -1286,7 +1389,6 @@ function buildLogRows(logsOverride){
   var logs = logsOverride || loadLogs();
   var ordered = logs.slice().reverse();
 
-  // 내보낼 기록들에 등장하는 모든 주파수를 모아 열을 동적으로 구성 (처음 등장한 순서, 숫자면 오름차순 정렬)
   var freqKeys = [];
   var seen = {};
   ordered.forEach(function(l){
@@ -1340,6 +1442,7 @@ function buildLogRows(logsOverride){
 
     row['온도(°C)'] = l.temp!=null ? fmt1(l.temp) : '';
     row['습도(%)'] = l.humid!=null ? fmt1(l.humid) : '';
+    row['날씨'] = l.weather || '';
     row['주소'] = l.address || '';
 
     return row;
@@ -1382,7 +1485,7 @@ function exportAsCSV(rows, baseName){
       return v;
     }).join(','));
   });
-  var csv = '\uFEFF' + lines.join('\r\n'); // BOM for Excel 한글 인코딩
+  var csv = '\uFEFF' + lines.join('\r\n'); // BOM for Excel
   var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   triggerDownload(blob, baseName + '.csv');
 }
@@ -1420,7 +1523,6 @@ function drawCompass(bearing){
   var html = '';
   html += '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="#223040" stroke-width="1.5"/>';
 
-  // tick marks every 30deg
   for(var deg=0; deg<360; deg+=30){
     var rad = toRad(deg-90);
     var x1 = cx + (r-8)*Math.cos(rad);
@@ -1433,10 +1535,8 @@ function drawCompass(bearing){
     html += '<text x="'+tx+'" y="'+(ty+4)+'" font-size="10" fill="#7c8a99" font-family="SF Mono, monospace" text-anchor="middle">'+deg+'</text>';
   }
 
-  // N marker
   html += '<text x="'+cx+'" y="'+(cy-r+22)+'" font-size="11" fill="#3ad6c2" font-family="SF Mono, monospace" text-anchor="middle" font-weight="700">N</text>';
 
-  // bearing needle
   var rad = toRad(bearing-90);
   var nx = cx + (r-14)*Math.cos(rad);
   var ny = cy + (r-14)*Math.sin(rad);

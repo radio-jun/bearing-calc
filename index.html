@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>방위각·거리 계산</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root{
     --bg: #0c1117;
@@ -62,10 +64,6 @@
   .dms-unit-wrap span{
     position:absolute; right:9px; top:50%; transform:translateY(-50%);
     font-size:12px; color:var(--text-dim); pointer-events:none;
-  }
-  .dd-preview{
-    font-family:var(--mono); font-size:12px; color:var(--accent-dim);
-    margin:-2px 0 12px 2px;
   }
 
   .map-link-row{
@@ -211,9 +209,25 @@
     display:flex; justify-content:space-between;
     padding:8px 0; border-bottom:1px solid var(--line);
     color:var(--text-dim);
+    align-items: center;
   }
   .detail-row:last-child{border-bottom:none;}
   .detail-row span:last-child{color:var(--text);}
+
+  /* 미니 지도 컨테이너 스타일 */
+  .mini-map-container {
+    margin-top: 10px;
+    margin-bottom: 12px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    overflow: hidden;
+    position: relative;
+  }
+  .mini-map {
+    width: 100%;
+    height: 180px;
+    background: #0a0f15;
+  }
 
   .compass-wrap{
     display:flex; justify-content:center; margin:6px 0 16px;
@@ -242,17 +256,6 @@
   .view{display:none;}
   .view.active{display:block;}
 
-  .sys-list{display:flex; flex-direction:column; gap:8px; margin-bottom:4px;}
-  .sys-item{
-    display:flex; align-items:center; justify-content:space-between;
-    background:#0a0f15; border:1px solid var(--line); border-radius:9px;
-    padding:11px 12px;
-  }
-  .sys-item.selected{border-color:var(--accent);}
-  .sys-info{flex:1; min-width:0;}
-  .sys-name{font-size:14px; font-weight:600; color:var(--text);}
-  .sys-coord{font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:2px;}
-  .sys-actions{display:flex; gap:6px; flex-shrink:0; margin-left:8px;}
   .icon-btn{
     width:30px; height:30px; border-radius:7px; border:1px solid var(--line);
     background:transparent; color:var(--text-dim); font-size:14px;
@@ -336,8 +339,7 @@
           <input id="elevInput" type="text" inputmode="decimal" placeholder="GPS 또는 서버에서 자동 조회">
         </div>
       </div>
-      <div class="preset-note" id="elevGpsNote">"현재 위치 사용" 시 고도 정보를 수집하며, 기기 GPS 수집 실패 시 외부 지형 데이터 서버를 통해 자동으로 표고를 보완 및 조회합니다.</div>
-      <button class="gps-btn" style="margin-top:8px;" onclick="openElevationLookup()">국토정보플랫폼에서 표고 조회 (GPS 안될 때)</button>
+      <div class="preset-note" id="elevGpsNote">"현재 위치 사용" 시 기기 고도 값을 분석하며, 고도 신호 부재 시 표고 지도 데이터를 통해 자동 연계 조회합니다.</div>
     </div>
   </div>
 
@@ -390,18 +392,23 @@
     </div>
 
     <div class="card" style="margin-bottom:14px;">
-      <div class="card-title">상세</div>
+      <div class="card-title">상세 정보</div>
       <div class="detail-list">
+        <div class="detail-row"><span>측정 일시</span><span id="measTimeVal" style="font-weight:600; color:var(--accent);">-</span></div>
         <div class="detail-row"><span>발사장소 해발고도</span><span id="elevVal">-</span></div>
-        <div class="detail-row" style="display:block;">
+        <div class="detail-row" style="display:block; border-bottom: none; padding-bottom: 0;">
           <span style="display:block; margin-bottom:4px;">발사장소 주소 (자동/수정 가능)</span>
           <input id="addrVal" type="text" placeholder="네트워크 연결 시 주소가 자동으로 채워집니다." autocomplete="off" style="width:100%; box-sizing:border-box; background:var(--bg2, #1a1a1a); border:1px solid var(--border, #333); color:var(--text); font-family:var(--sans); font-size:12.5px; padding:8px; border-radius:6px;">
         </div>
       </div>
 
+      <div class="mini-map-container">
+        <div id="miniMap" class="mini-map"></div>
+      </div>
+
       <div class="map-link-row">
-        <a id="naverMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">네이버지도</a>
-        <a id="kakaoMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">카카오맵</a>
+        <a id="naverMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">네이버지도 앱 연동</a>
+        <a id="kakaoMapLink" class="map-link-btn" href="#" target="_blank" rel="noopener">카카오맵 앱 연동</a>
       </div>
 
       <div class="row" style="margin-top:14px; margin-bottom:0;">
@@ -437,6 +444,22 @@
   </div>
 
   <div class="view" id="viewSys">
+    <div class="card">
+      <div class="card-title"><span><span class="dot" style="background:#ffcc00"></span>국내 고정밀 API 연동 설정</span></div>
+      <div class="preset-note" style="margin-bottom: 12px; font-size:11.5px; color: var(--text-dim);">
+        한국 실정에 맞는 국산 지도 서비스 및 실시간 기상청 정보를 연동하기 위해 발급받은 API 키를 입력하세요. 입력하지 않으면 대체 글로벌 무료 서비스가 가동됩니다.
+      </div>
+      <div class="field" style="margin-bottom: 10px;">
+        <label>카카오 REST API 키</label>
+        <input id="kakaoApiKey" type="password" placeholder="카카오에서 발급받은 REST API 키 입력" onchange="saveApiKeys()">
+      </div>
+      <div class="field" style="margin-bottom: 10px;">
+        <label>기상청 공공데이터 일반 인증키 (Encoding)</label>
+        <input id="kmaApiKey" type="password" placeholder="공공데이터포털 기상청 단기예보 서비스 인증키 입력" onchange="saveApiKeys()">
+      </div>
+      <div class="preset-note" style="font-size: 10px; color:#5c6f84;">* 입력하신 API 키는 브라우저 내부 로컬스토리지에만 안전하게 저장되며 절대 외부로 전송되지 않습니다.</div>
+    </div>
+
     <div class="card">
       <div class="card-title"><span><span class="dot"></span>시스템 저장</span></div>
       <div class="field" style="margin-bottom:12px;">
@@ -540,8 +563,9 @@ var STORE_SYS = 'df_systems_v1';
 var STORE_LOG = 'df_logs_v1';
 var STORE_FREQ = 'df_freqs_v1';
 var lastResult = null;
+var activeMap = null; // 리플렛 지도가 로드되었을 때 객체 보관용
 
-// ---- DMS <-> DD helpers ----
+// DMS <-> DD 변환 도구
 function dmsToDD(d, m, s){
   d = parseFloat(d)||0; m = parseFloat(m)||0; s = parseFloat(s)||0;
   var sign = d < 0 ? -1 : 1;
@@ -573,24 +597,8 @@ function setDMS(prefix, dd){
   mEl.value = dms.m;
   sEl.value = dms.s.toFixed(2);
 }
-function updatePreview(prefix, targetId){
-  var dd = getDD(prefix);
-  var el = document.getElementById(targetId);
-  el.textContent = isNaN(dd) ? '= -' : ('= ' + dd.toFixed(6) + '°');
-}
-function wireLivePreview(prefix, targetId){
-  ['d','m','s','D','M','S'].forEach(function(suf){
-    var el = document.getElementById(prefix+suf);
-    if(el) el.addEventListener('input', function(){ updatePreview(prefix, targetId); });
-  });
-}
-function wireManualEditListener(prefix, onEdit){
-  ['d','m','s','D','M','S'].forEach(function(suf){
-    var el = document.getElementById(prefix+suf);
-    if(el) el.addEventListener('input', onEdit);
-  });
-}
 
+// 로컬 스토리지 입출력
 function loadSystems(){
   try{ return JSON.parse(localStorage.getItem(STORE_SYS)) || []; }
   catch(e){ return []; }
@@ -606,30 +614,26 @@ function saveLogs(list){
   localStorage.setItem(STORE_LOG, JSON.stringify(list));
 }
 
+// API 키 로컬 세팅 관리
+function saveApiKeys(){
+  localStorage.setItem('kakao_api_key', document.getElementById('kakaoApiKey').value.trim());
+  localStorage.setItem('kma_api_key', document.getElementById('kmaApiKey').value.trim());
+}
+function loadApiKeys(){
+  document.getElementById('kakaoApiKey').value = localStorage.getItem('kakao_api_key') || '';
+  document.getElementById('kmaApiKey').value = localStorage.getItem('kma_api_key') || '';
+}
+
 function switchTab(name){
   ['calc','sys','log'].forEach(function(t){
     document.getElementById('tab'+capitalize(t)).classList.toggle('active', t===name);
     document.getElementById('view'+capitalize(t)).classList.toggle('active', t===name);
   });
-  if(name==='sys'){ renderSysListSelect(); renderFreqListSelect(); }
+  if(name==='sys'){ loadApiKeys(); renderSysListSelect(); renderFreqListSelect(); }
   if(name==='log') renderLogList();
   if(name==='calc') renderRefSysOptions();
 }
 function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
-
-function openElevationLookup(){
-  var lat2 = getDD('lat2'), lon2 = getDD('lon2');
-  if(isNaN(lat2) || isNaN(lon2)){
-    alert('먼저 발사장소 위경도를 입력하거나 GPS로 채워주세요.');
-    return;
-  }
-  var coordText = lat2.toFixed(6) + ', ' + lon2.toFixed(6);
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(coordText).catch(function(){});
-  }
-  alert('좌표(' + coordText + ')를 클립보드에 복사했습니다.\n국토정보플랫폼이 새 탭으로 열리면 지도 검색창에 붙여넣거나 해당 위치를 찾아 표고(DEM)를 확인한 뒤, 고도 칸에 직접 입력해 주세요.');
-  window.open('https://map.ngii.go.kr/', '_blank', 'noopener');
-}
 
 function geoErrorMessage(err){
   if(err.code === 1) return '위치 권한이 거부되었습니다. 설정 > Safari(또는 이 앱) > 위치 접근에서 "허용"으로 변경해 주세요.';
@@ -660,7 +664,7 @@ function useGPS(which){
   }, {enableHighAccuracy:true, timeout:10000, maximumAge:0});
 }
 
-// Open-Meteo API를 활용한 무상 고도 자동 보정 조회 함수 (백그라운드 비동기)
+// Open-Meteo 고도 자동 보정 조회 API (무상 글로벌 백그라운드)
 async function fetchElevationFromServer(lat, lon) {
   try {
     var response = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
@@ -689,7 +693,6 @@ function useGPSWithAltitude(){
     if(watchId !== null) navigator.geolocation.clearWatch(watchId);
     if(note) note.textContent = origNote;
     
-    // GPS 자체 고도가 없는 경우, Open-Meteo 서버에 표고 자동 요청
     var lat2 = getDD('lat2');
     var lon2 = getDD('lon2');
     if (!isNaN(lat2) && !isNaN(lon2)) {
@@ -723,7 +726,6 @@ function useGPSWithAltitude(){
         document.getElementById('elevInput').value = pos.coords.altitude.toFixed(1);
       }
     } else {
-      // 기기 고도가 null인 경우 즉시 백그라운드 서버 API 요청 처리 시작 가능
       var srvElev = await fetchElevationFromServer(pos.coords.latitude, pos.coords.longitude);
       if(srvElev !== null && !settled) {
         settled = true;
@@ -871,7 +873,7 @@ function deleteSelectedSys(){
   }, 3000);
 }
 
-// ---- 발사 주파수 저장 목록 ----
+// ---- 발사 주파수 목록 ----
 function loadFreqs(){
   try{ return JSON.parse(localStorage.getItem(STORE_FREQ)) || []; }
   catch(e){ return []; }
@@ -1016,8 +1018,56 @@ function escapeHtml(str){
   return d.innerHTML;
 }
 
-// Open-Meteo 날씨 코드 한글 명칭 매핑 함수
-function getWeatherDesc(code) {
+// ---------------- 대한민국 기상청 전용 LCC 격자 변환 처리 공식 ----------------
+var NX = 149, NY = 253;
+var Re = 6371.00877 / 5.072;
+var grid_dep = 5.072;
+var grid_slat1 = 30.0, grid_slat2 = 60.0;
+var grid_olon = 126.0, grid_olat = 38.0;
+var grid_xo = 43, grid_yo = 136;
+
+function dfs_xy_conv(lat, lon) {
+  var DEGRAD = Math.PI / 180.0;
+  var re = Re;
+  var slat1 = grid_slat1 * DEGRAD;
+  var slat2 = grid_slat2 * DEGRAD;
+  var olon = grid_olon * DEGRAD;
+  var olat = grid_olat * DEGRAD;
+
+  var sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+  sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+  var sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+  sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+  var ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
+  ro = re * sf / Math.pow(ro, sn);
+
+  var ra = Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5);
+  ra = re * sf / Math.pow(ra, sn);
+  var theta = lon * DEGRAD - olon;
+  if (theta > Math.PI) theta -= 2.0 * Math.PI;
+  if (theta < -Math.PI) theta += 2.0 * Math.PI;
+  theta *= sn;
+
+  var x = Math.floor(ra * Math.sin(theta) + grid_xo + 0.5);
+  var y = Math.floor(ro - ra * Math.cos(theta) + grid_yo + 0.5);
+  return {x: x, y: y};
+}
+
+// 기상청 하늘상태(SKY) 및 강수형태(PTY) 기반의 날씨 텍스트 보정 매핑
+function getKmaWeatherDesc(pty, sky) {
+  var ptyVal = parseInt(pty) || 0;
+  var skyVal = parseInt(sky) || 1;
+  if (ptyVal === 1) return "비";
+  if (ptyVal === 2) return "비/눈";
+  if (ptyVal === 3) return "눈";
+  if (ptyVal === 4) return "소나기";
+  if (skyVal === 1) return "맑음";
+  if (skyVal === 3) return "구름많음";
+  if (skyVal === 4) return "흐림";
+  return "흐림";
+}
+
+function getGlobalWeatherDesc(code) {
   if (code === 0) return "맑음";
   if (code === 1 || code === 2 || code === 3) return "구름조금";
   if (code === 45 || code === 48) return "안개";
@@ -1029,33 +1079,156 @@ function getWeatherDesc(code) {
   return "흐림";
 }
 
-// 실시간 기상 및 주소 자동 채우기 메인 함수 (방위각 계산 시 호출됨)
-async function fetchWeatherAndAddress(lat, lon) {
-  // 1. 기상 조회 (Open-Meteo Forecast)
-  try {
-    var weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
-    var wRes = await fetch(weatherUrl);
-    if (wRes.ok) {
-      var wData = await wRes.json();
-      if (wData && wData.current) {
-        document.getElementById('tempInput').value = wData.current.temperature_2m !== undefined ? wData.current.temperature_2m.toFixed(1) : '';
-        document.getElementById('humidInput').value = wData.current.relative_humidity_2m !== undefined ? Math.round(wData.current.relative_humidity_2m) : '';
-        if (wData.current.weather_code !== undefined) {
-          document.getElementById('weatherInput').value = getWeatherDesc(wData.current.weather_code);
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("기상 정보 백그라운드 자동조회 실패:", e);
+// ---------------- 카카오맵 기반 동적 미니 지도 렌더링 시스템 ----------------
+function renderMiniMap(lat, lon) {
+  var container = document.getElementById('miniMap');
+  container.innerHTML = ''; // 이전 맵 컨텐츠 초기화
+  
+  if (activeMap) {
+    activeMap.remove();
+    activeMap = null;
   }
 
-  // 2. 한글 역지오코딩 주소 조회 (OpenStreetMap Nominatim)
+  var kakaoKey = localStorage.getItem('kakao_api_key') || '';
+
+  if (kakaoKey) {
+    // 1. 카카오맵 API 로드 및 객체 렌더링
+    if (typeof kakao !== 'undefined' && kakao.maps) {
+      initKakaoMap(lat, lon);
+    } else {
+      // 카카오 맵 스크립트가 아직 없는 경우 동적으로 주입하여 연동 실행
+      var script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false`;
+      script.onload = function() {
+        kakao.maps.load(function() {
+          initKakaoMap(lat, lon);
+        });
+      };
+      document.head.appendChild(script);
+    }
+  } else {
+    // 2. 카카오 키가 없을 시 글로벌 Leaflet OSM 연동 구동
+    initLeafletMap(lat, lon);
+  }
+}
+
+function initKakaoMap(lat, lon) {
+  var container = document.getElementById('miniMap');
+  var options = {
+    center: new kakao.maps.LatLng(lat, lon),
+    level: 4
+  };
+  var map = new kakao.maps.Map(container, options);
+  
+  // 줌인/아웃 휠 방지 기능 (모바일 기기 스크롤 방해 차단)
+  map.setZoomable(true);
+
+  var markerPosition  = new kakao.maps.LatLng(lat, lon); 
+  var marker = new kakao.maps.Marker({
+    position: markerPosition
+  });
+  marker.setMap(map);
+}
+
+function initLeafletMap(lat, lon) {
+  activeMap = L.map('miniMap', {
+    center: [lat, lon],
+    zoom: 14,
+    zoomControl: false,
+    attributionControl: false
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(activeMap);
+  L.marker([lat, lon]).addTo(activeMap);
+}
+
+// ---------------- 한국 우선 하이브리드 자동 데이터 조회 메인 함수 ----------------
+async function fetchWeatherAndAddress(lat, lon) {
+  var kakaoKey = localStorage.getItem('kakao_api_key') || '';
+  var kmaKey = localStorage.getItem('kma_api_key') || '';
+
+  // 1. 역지오코딩 상세 주소 조회 (카카오 로컬 vs 글로벌 OSM)
+  if (kakaoKey) {
+    try {
+      var kakaoUrl = `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lon}&y=${lat}`;
+      var kRes = await fetch(kakaoUrl, {
+        headers: { 'Authorization': 'KakaoAK ' + kakaoKey }
+      });
+      if (kRes.ok) {
+        var kData = await kRes.json();
+        if (kData && kData.documents && kData.documents[0]) {
+          var doc = kData.documents[0];
+          var roadAddr = doc.road_address ? doc.road_address.address_name : '';
+          var landAddr = doc.address ? doc.address.address_name : '';
+          document.getElementById('addrVal').value = roadAddr || landAddr || '주소 식별 불가';
+        }
+      }
+    } catch (e) {
+      console.warn("카카오 주소 변환 API 실패, 글로벌 백업 가동:", e);
+      await fetchGlobalAddress(lat, lon);
+    }
+  } else {
+    await fetchGlobalAddress(lat, lon);
+  }
+
+  // 2. 날씨 정보 수집 (기상청 초단기실황 vs 글로벌 Open-Meteo)
+  if (kmaKey) {
+    try {
+      var now = new Date();
+      // 기상청 데이터는 매시 40분 이후에 안전하게 서버가 갱신됩니다.
+      var curMin = now.getMinutes();
+      if (curMin < 40) {
+        now.setHours(now.getHours() - 1);
+      }
+      var baseDateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+      var baseTimeStr = String(now.getHours()).padStart(2, '0') + '00';
+
+      var kmaGrid = dfs_xy_conv(lat, lon);
+      
+      var kmaUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
+      var kmaRes = await fetch(kmaUrl);
+      if (kmaRes.ok) {
+        var kmaData = await kmaRes.json();
+        if (kmaData && kmaData.response && kmaData.response.body && kmaData.response.body.items) {
+          var items = kmaData.response.body.items.item || [];
+          var temp = "", humid = "", pty = "", sky = "1";
+          
+          items.forEach(function(item){
+            if (item.category === "T1H") temp = parseFloat(item.obsrValue).toFixed(1);
+            if (item.category === "REH") humid = Math.round(parseFloat(item.obsrValue));
+            if (item.category === "PTY") pty = item.obsrValue;
+          });
+
+          var skyUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
+          try {
+            var skyRes = await fetch(skyUrl);
+            if (skyRes.ok) {
+              var skyData = await skyRes.json();
+              var skyItems = skyData.response.body.items.item || [];
+              var matchedSky = skyItems.find(function(it){ return it.category === "SKY"; });
+              if (matchedSky) sky = matchedSky.fcstValue;
+            }
+          } catch(e) {}
+
+          document.getElementById('tempInput').value = temp;
+          document.getElementById('humidInput').value = humid;
+          document.getElementById('weatherInput').value = getKmaWeatherDesc(pty, sky);
+        }
+      }
+    } catch (e) {
+      console.warn("기상청 API 조회 실패, 글로벌 기상으로 백업:", e);
+      await fetchGlobalWeather(lat, lon);
+    }
+  } else {
+    await fetchGlobalWeather(lat, lon);
+  }
+}
+
+// 글로벌 주소 백업 API
+async function fetchGlobalAddress(lat, lon) {
   try {
     var addrUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=ko`;
-    // OSM 서버의 차단을 예방하기 위해 커스텀 요청 구조로 처리
-    var aRes = await fetch(addrUrl, {
-      headers: { 'Accept-Language': 'ko' }
-    });
+    var aRes = await fetch(addrUrl, { headers: { 'Accept-Language': 'ko' } });
     if (aRes.ok) {
       var aData = await aRes.json();
       if (aData && aData.address) {
@@ -1066,17 +1239,34 @@ async function fetchWeatherAndAddress(lat, lon) {
         var partBldg = addr.building || addr.house_number || '';
         
         var combinedAddr = [partProvince, partCity, partRoad, partBldg].filter(function(v){ return v.trim() !== ''; }).join(' ');
-        if (!combinedAddr.trim() && aData.display_name) {
-          combinedAddr = aData.display_name;
-        }
+        if (!combinedAddr.trim() && aData.display_name) combinedAddr = aData.display_name;
         document.getElementById('addrVal').value = combinedAddr || '주소 식별 불가';
       }
     }
   } catch (e) {
-    console.warn("주소 백그라운드 자동조회 실패:", e);
+    console.warn("글로벌 주소 수집 불가:", e);
   }
 }
 
+// 글로벌 기상 백업 API (Open-Meteo)
+async function fetchGlobalWeather(lat, lon) {
+  try {
+    var weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
+    var wRes = await fetch(weatherUrl);
+    if (wRes.ok) {
+      var wData = await wRes.json();
+      if (wData && wData.current) {
+        document.getElementById('tempInput').value = wData.current.temperature_2m !== undefined ? wData.current.temperature_2m.toFixed(1) : '';
+        document.getElementById('humidInput').value = wData.current.relative_humidity_2m !== undefined ? Math.round(wData.current.relative_humidity_2m) : '';
+        if (wData.current.weather_code !== undefined) {
+          document.getElementById('weatherInput').value = getGlobalWeatherDesc(wData.current.weather_code);
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+// ---------------- 메인 계산 루프 ----------------
 function calc(){
   var lat1 = getDD('lat1');
   var lon1 = getDD('lon1');
@@ -1091,18 +1281,29 @@ function calc(){
   }
   errEl.classList.remove('show');
 
-  var R = 6371000; // m, mean earth radius
+  // 계산 버튼 작동 시간 기록 생성
+  var d = new Date();
+  var formatTime = d.getFullYear() + '-' + 
+                   String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+                   String(d.getDate()).padStart(2, '0') + ' ' + 
+                   String(d.getHours()).padStart(2, '0') + ':' + 
+                   String(d.getMinutes()).padStart(2, '0') + ':' + 
+                   String(d.getSeconds()).padStart(2, '0');
+
+  document.getElementById('measTimeVal').textContent = formatTime;
+
+  var R = 6371000; 
   var phi1 = toRad(lat1), phi2 = toRad(lat2);
   var dPhi = toRad(lat2-lat1);
   var dLambda = toRad(lon2-lon1);
 
-  // Haversine distance
+  // 거리
   var a = Math.sin(dPhi/2)*Math.sin(dPhi/2) +
           Math.cos(phi1)*Math.cos(phi2)*Math.sin(dLambda/2)*Math.sin(dLambda/2);
   var c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   var dist = R*c;
 
-  // Initial bearing (true north)
+  // 진방위
   var y = Math.sin(dLambda)*Math.cos(phi2);
   var x = Math.cos(phi1)*Math.sin(phi2) - Math.sin(phi1)*Math.cos(phi2)*Math.cos(dLambda);
   var brng = (toDeg(Math.atan2(y,x))+360)%360;
@@ -1126,7 +1327,7 @@ function calc(){
   lastResult = {
     lat1: lat1, lon1: lon1, lat2: lat2, lon2: lon2,
     distKm: dist/1000, bearing: brng, nearest30: nearest30, dev30: dev30,
-    backBrng: backBrng, time: new Date().toISOString(),
+    backBrng: backBrng, time: d.toISOString(),
     elevation: elevation, address: null
   };
 
@@ -1143,7 +1344,10 @@ function calc(){
   document.getElementById('naverMapLink').href = naverUrl;
   document.getElementById('kakaoMapLink').href = kakaoUrl;
 
-  // 계산과 동시에 백그라운드 주소 및 기상 정보 파싱 비동기 호출 수행
+  // 지도 생성 (카카오 우선 로드 적용)
+  renderMiniMap(lat2, lon2);
+
+  // 백그라운드 서버 정보 획득
   fetchWeatherAndAddress(lat2, lon2);
 }
 
@@ -1170,7 +1374,7 @@ function addFreqRow(freq, txStrength, rxStrength, bearing){
       '<div class="field"><select class="freqSelect" onchange="fillFreqFromSelect(this)">'+buildFreqOptionsHTML()+'</select></div>' +
     '</div>' +
     '<div class="row" style="margin-bottom:8px;">' +
-      '<div class="field"><input type="text" inputmode="decimal" placeholder="주파수 (MHz) 직접입력 가능" class="freqInput" value="'+attrEscape(freq)+'"></div>' +
+      '<div class="field"><input type="text" inputmode="decimal" placeholder="주파수 (MHz) 직접입력" class="freqInput" value="'+attrEscape(freq)+'"></div>' +
     '</div>' +
     '<div class="row" style="margin-bottom:8px;">' +
       '<div class="field"><input type="text" placeholder="송신세기 dBm (예: -110)" class="txStrengthInput" value="'+attrEscape(txStrength)+'"></div>' +
@@ -1267,7 +1471,7 @@ function renderLogFilterOptions(allLogs){
   var names = Object.keys(namesSet);
   var html = '<option value="">전체 시스템</option>';
   names.forEach(function(n){
-    var label = n === '' ? '(직접입력, 저장 안 된 기준점)' : n;
+    var label = n === '' ? '(직접입력)' : n;
     html += '<option value="'+attrEscape(n)+'">'+escapeHtml(label)+'</option>';
   });
   sel.innerHTML = html;
@@ -1485,7 +1689,7 @@ function exportAsCSV(rows, baseName){
       return v;
     }).join(','));
   });
-  var csv = '\uFEFF' + lines.join('\r\n'); // BOM for Excel
+  var csv = '\uFEFF' + lines.join('\r\n');
   var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   triggerDownload(blob, baseName + '.csv');
 }
@@ -1545,6 +1749,13 @@ function drawCompass(bearing){
   html += '<circle cx="'+nx+'" cy="'+ny+'" r="4" fill="#3ad6c2"/>';
 
   svg.innerHTML = html;
+}
+
+function wireManualEditListener(prefix, callback){
+  ['d','m','s','D','M','S'].forEach(function(sfx){
+    var el = document.getElementById(prefix+sfx);
+    if(el) el.addEventListener('input', callback);
+  });
 }
 
 renderRefSysOptions();

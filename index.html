@@ -426,6 +426,7 @@
           <input id="weatherInput" type="text" placeholder="자동 조회됨" autocomplete="off">
         </div>
       </div>
+      <div class="preset-note" id="weatherNote" style="display:none; margin-top:6px; color:#e0a951;"></div>
 
       <div class="card-title" style="margin-top:16px;">발사장소 구분</div>
       <div class="row" style="margin-bottom:6px;">
@@ -1190,6 +1191,9 @@ async function fetchWeatherAndAddress(lat, lon) {
   var kakaoKey = localStorage.getItem('kakao_api_key') || '';
   var kmaKey = localStorage.getItem('kma_api_key') || '';
 
+  var noteEl = document.getElementById('weatherNote');
+  if (noteEl) { noteEl.textContent = ''; noteEl.style.display = 'none'; }
+
   // 1. 역지오코딩 상세 주소 조회 (카카오 로컬 vs 글로벌 OSM)
   if (kakaoKey) {
     try {
@@ -1227,43 +1231,72 @@ async function fetchWeatherAndAddress(lat, lon) {
       var baseTimeStr = String(now.getHours()).padStart(2, '0') + '00';
 
       var kmaGrid = dfs_xy_conv(lat, lon);
-      
+
       var kmaUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
       var kmaRes = await fetch(kmaUrl);
-      if (kmaRes.ok) {
-        var kmaData = await kmaRes.json();
-        if (kmaData && kmaData.response && kmaData.response.body && kmaData.response.body.items) {
-          var items = kmaData.response.body.items.item || [];
-          var temp = "", humid = "", pty = "", sky = "1";
-          
-          items.forEach(function(item){
-            if (item.category === "T1H") temp = parseFloat(item.obsrValue).toFixed(1);
-            if (item.category === "REH") humid = Math.round(parseFloat(item.obsrValue));
-            if (item.category === "PTY") pty = item.obsrValue;
-          });
+      var kmaText = await kmaRes.text();
 
-          var skyUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
-          try {
-            var skyRes = await fetch(skyUrl);
-            if (skyRes.ok) {
-              var skyData = await skyRes.json();
-              var skyItems = skyData.response.body.items.item || [];
-              var matchedSky = skyItems.find(function(it){ return it.category === "SKY"; });
-              if (matchedSky) sky = matchedSky.fcstValue;
-            }
-          } catch(e) {}
+      var kmaData = null;
+      try { kmaData = JSON.parse(kmaText); } catch(parseErr){}
 
-          document.getElementById('tempInput').value = temp;
-          document.getElementById('humidInput').value = humid;
-          document.getElementById('weatherInput').value = getKmaWeatherDesc(pty, sky);
-        }
+      if (!kmaRes.ok) {
+        throw new Error('HTTP ' + kmaRes.status + ' — ' + kmaText.slice(0, 150));
       }
+      if (!kmaData) {
+        // 데이터포털은 오류 시 JSON 대신 XML을 반환하는 경우가 많습니다 (인증키 오류/미승인 등)
+        throw new Error('응답이 JSON이 아님 (서비스키 오류/미승인 가능성): ' + kmaText.slice(0, 150));
+      }
+      var resultCode = kmaData.response && kmaData.response.header && kmaData.response.header.resultCode;
+      var resultMsg = kmaData.response && kmaData.response.header && kmaData.response.header.resultMsg;
+      if (resultCode !== '00') {
+        throw new Error('기상청 응답 오류 [' + resultCode + '] ' + (resultMsg || '알 수 없는 오류'));
+      }
+      if (!kmaData.response.body || !kmaData.response.body.items) {
+        throw new Error('해당 시각/지역의 관측 데이터 없음 (base_date=' + baseDateStr + ' base_time=' + baseTimeStr + ')');
+      }
+
+      var items = kmaData.response.body.items.item || [];
+      var temp = "", humid = "", pty = "", sky = "1";
+
+      items.forEach(function(item){
+        if (item.category === "T1H") temp = parseFloat(item.obsrValue).toFixed(1);
+        if (item.category === "REH") humid = Math.round(parseFloat(item.obsrValue));
+        if (item.category === "PTY") pty = item.obsrValue;
+      });
+
+      if (temp === "" && humid === "") {
+        throw new Error('응답은 정상이나 기온/습도 항목(T1H/REH)이 비어 있음');
+      }
+
+      var skyUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst?serviceKey=${kmaKey}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${kmaGrid.x}&ny=${kmaGrid.y}`;
+      try {
+        var skyRes = await fetch(skyUrl);
+        if (skyRes.ok) {
+          var skyData = await skyRes.json();
+          var skyItems = skyData.response.body.items.item || [];
+          var matchedSky = skyItems.find(function(it){ return it.category === "SKY"; });
+          if (matchedSky) sky = matchedSky.fcstValue;
+        }
+      } catch(e) {}
+
+      document.getElementById('tempInput').value = temp;
+      document.getElementById('humidInput').value = humid;
+      document.getElementById('weatherInput').value = getKmaWeatherDesc(pty, sky);
     } catch (e) {
       console.warn("기상청 API 조회 실패, 글로벌 기상으로 백업:", e);
+      showWeatherNote('기상청 자동조회 실패: ' + e.message + ' — 글로벌 기상(Open-Meteo)으로 대체 표시합니다.');
       await fetchGlobalWeather(lat, lon);
     }
   } else {
     await fetchGlobalWeather(lat, lon);
+  }
+}
+
+function showWeatherNote(msg){
+  var noteEl = document.getElementById('weatherNote');
+  if (noteEl) {
+    noteEl.textContent = msg;
+    noteEl.style.display = 'block';
   }
 }
 
@@ -1296,17 +1329,23 @@ async function fetchGlobalWeather(lat, lon) {
   try {
     var weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
     var wRes = await fetch(weatherUrl);
-    if (wRes.ok) {
-      var wData = await wRes.json();
-      if (wData && wData.current) {
-        document.getElementById('tempInput').value = wData.current.temperature_2m !== undefined ? wData.current.temperature_2m.toFixed(1) : '';
-        document.getElementById('humidInput').value = wData.current.relative_humidity_2m !== undefined ? Math.round(wData.current.relative_humidity_2m) : '';
-        if (wData.current.weather_code !== undefined) {
-          document.getElementById('weatherInput').value = getGlobalWeatherDesc(wData.current.weather_code);
-        }
+    if (!wRes.ok) throw new Error('HTTP ' + wRes.status);
+    var wData = await wRes.json();
+    if (wData && wData.current) {
+      document.getElementById('tempInput').value = wData.current.temperature_2m !== undefined ? wData.current.temperature_2m.toFixed(1) : '';
+      document.getElementById('humidInput').value = wData.current.relative_humidity_2m !== undefined ? Math.round(wData.current.relative_humidity_2m) : '';
+      if (wData.current.weather_code !== undefined) {
+        document.getElementById('weatherInput').value = getGlobalWeatherDesc(wData.current.weather_code);
       }
+    } else {
+      throw new Error('응답에 current 데이터 없음');
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Open-Meteo 조회도 실패:', e);
+    var noteEl = document.getElementById('weatherNote');
+    var prefix = (noteEl && noteEl.textContent) ? noteEl.textContent + ' / ' : '';
+    showWeatherNote(prefix + '글로벌 기상(Open-Meteo)도 실패: ' + e.message + ' — 기온/습도를 직접 입력해 주세요.');
+  }
 }
 
 // ---------------- 메인 계산 루프 ----------------

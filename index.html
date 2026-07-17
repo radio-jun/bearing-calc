@@ -442,6 +442,43 @@
 
     <button class="gps-btn" style="border-color:var(--accent-dim); color:var(--accent);" onclick="saveLog()">이 결과 기록에 저장</button>
     <div id="saveLogMsg" style="display:none; color:#22c55e; text-align:center; font-size:13px; font-weight:600; margin-top:8px;">저장되었습니다</div>
+
+    <button class="gps-btn" style="margin-top:14px; border-color:#7c5ce6; color:#a78bfa;" onclick="toggleLabCard()">🔬 실험실 — 앙각 · 지형 프로파일 · 프레넬 존</button>
+
+    <div class="card" id="labCard" style="display:none; margin-top:10px;">
+      <div class="card-title"><span><span class="dot" style="background:#a78bfa"></span>실험실 (LOS / DEM / Fresnel)</span></div>
+      <div class="preset-note" style="margin-top:-6px; margin-bottom:10px;">
+        기준점·발사장소는 위 계산에 입력된 좌표를 그대로 사용합니다. 국내외 공개 DEM(Open-Meteo Elevation)에서 경로상 표고를 받아와 지형 프로파일과 1차 프레넬 존, 지구곡률 보정 앙각을 계산합니다.
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>기준점 해발고 (m, 직접입력)</label>
+          <input id="labRefElev" type="text" inputmode="decimal" placeholder="예: 950 (안테나/설치 고도)">
+        </div>
+        <div class="field">
+          <label>주파수 (MHz)</label>
+          <input id="labFreq" type="text" inputmode="decimal" placeholder="예: 1575.42">
+        </div>
+      </div>
+      <div class="preset-note" style="margin-top:-4px;">발사장소 해발고는 위쪽 "발사 장소" 카드의 해발고도 입력값을 그대로 씁니다 (비어 있으면 DEM 조회값 사용).</div>
+
+      <button class="calc-btn" style="margin-top:8px;" onclick="runTerrainAnalysis()">지형 분석 실행 (DEM 조회)</button>
+      <div class="preset-note" id="labStatus" style="margin-top:8px;"></div>
+
+      <div id="labResults" style="display:none; margin-top:14px;">
+        <div class="detail-list">
+          <div class="detail-row"><span>앙각 (지구곡률 보정, k=4/3)</span><span id="labElevAngle">-</span></div>
+          <div class="detail-row"><span>수평거리</span><span id="labHorizDist">-</span></div>
+          <div class="detail-row"><span>고도차 (발사 − 기준)</span><span id="labHeightDiff">-</span></div>
+          <div class="detail-row"><span>1차 프레넬 존 최대반경 (중앙)</span><span id="labFresnelMax">-</span></div>
+          <div class="detail-row"><span>최소 여유율 (프레넬 대비)</span><span id="labMinClearance">-</span></div>
+          <div class="detail-row"><span>가시선(LOS) 판정</span><span id="labLosVerdict">-</span></div>
+        </div>
+        <svg id="labProfileSvg" width="100%" height="200" viewBox="0 0 600 200" style="margin-top:10px; background:#0a0f15; border-radius:9px; display:block;"></svg>
+        <div class="preset-note">회색 채움: DEM 지형 · 청록 실선: 가시선(LOS, 지구곡률 보정) · 주황 점선: 1차 프레넬 존 60% 경계</div>
+      </div>
+    </div>
   </div>
 
   </div>
@@ -1362,6 +1399,205 @@ async function fetchGlobalWeather(lat, lon) {
 }
 
 // ---------------- 메인 계산 루프 ----------------
+// ---------------- 실험실: 앙각 / DEM 지형 프로파일 / 프레넬 존 / 지구곡률 보정 ----------------
+function resetLabCard(){
+  var card = document.getElementById('labCard');
+  if(card) card.style.display = 'none';
+  var results = document.getElementById('labResults');
+  if(results) results.style.display = 'none';
+  var status = document.getElementById('labStatus');
+  if(status) status.textContent = '';
+  var refElevInput = document.getElementById('labRefElev');
+  if(refElevInput) refElevInput.value = '';
+}
+
+function toggleLabCard(){
+  var card = document.getElementById('labCard');
+  if(!card) return;
+  var opening = card.style.display === 'none';
+  card.style.display = opening ? 'block' : 'none';
+  if(opening){
+    // 저장된 주파수가 있으면 첫 값을 기본으로 채워줌 (편의상)
+    var freqInput = document.getElementById('labFreq');
+    if(freqInput && !freqInput.value){
+      var savedFreqs = loadFreqs();
+      if(savedFreqs.length){ freqInput.value = savedFreqs[0].freq; }
+    }
+  }
+}
+
+async function fetchElevationBatch(lats, lons){
+  var url = 'https://api.open-meteo.com/v1/elevation?latitude=' + lats.join(',') + '&longitude=' + lons.join(',');
+  var res = await fetch(url, {cache:'no-store'});
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  var data = await res.json();
+  if(!data || !Array.isArray(data.elevation)) throw new Error('표고 데이터 형식 오류');
+  return data.elevation;
+}
+
+async function runTerrainAnalysis(){
+  var statusEl = document.getElementById('labStatus');
+  var resultsEl = document.getElementById('labResults');
+  resultsEl.style.display = 'none';
+
+  var lat1 = getDD('lat1'), lon1 = getDD('lon1');
+  var lat2 = getDD('lat2'), lon2 = getDD('lon2');
+  if(isNaN(lat1)||isNaN(lon1)||isNaN(lat2)||isNaN(lon2)){
+    statusEl.textContent = '기준점/발사장소 좌표를 먼저 위쪽 계산 카드에 입력해 주세요.';
+    return;
+  }
+
+  var refElev = parseFloat(document.getElementById('labRefElev').value);
+  if(isNaN(refElev)){
+    statusEl.textContent = '기준점 해발고(m)를 입력해 주세요.';
+    return;
+  }
+
+  var freqMHz = parseFloat(document.getElementById('labFreq').value);
+  if(isNaN(freqMHz) || freqMHz <= 0){
+    statusEl.textContent = '주파수(MHz)를 입력해 주세요.';
+    return;
+  }
+
+  statusEl.textContent = 'DEM 지형 프로파일 조회 중... (Open-Meteo Elevation)';
+
+  var N = 40; // 경로 샘플 포인트 수 (양 끝 포함, 41개 지점)
+  var sampLats = [], sampLons = [], fracs = [];
+  for(var i=0; i<=N; i++){
+    var f = i/N;
+    sampLats.push(lat1 + (lat2-lat1)*f);
+    sampLons.push(lon1 + (lon2-lon1)*f);
+    fracs.push(f);
+  }
+
+  var elevations;
+  try{
+    elevations = await fetchElevationBatch(sampLats, sampLons);
+  } catch(e){
+    statusEl.textContent = 'DEM 조회 실패: ' + e.message + ' (네트워크 또는 API 문제일 수 있습니다)';
+    return;
+  }
+  if(elevations.length !== sampLats.length){
+    statusEl.textContent = 'DEM 응답 개수 불일치 (' + elevations.length + '/' + sampLats.length + ') — 다시 시도해 주세요.';
+    return;
+  }
+
+  var demTxElev = elevations[elevations.length-1];
+  var manualTxElev = parseFloat(document.getElementById('elevInput').value);
+  var txElev = !isNaN(manualTxElev) ? manualTxElev : demTxElev;
+
+  // 총 수평거리 (대원거리, m)
+  var R = 6371000;
+  var phi1 = toRad(lat1), phi2 = toRad(lat2);
+  var dPhi = toRad(lat2-lat1), dLambda = toRad(lon2-lon1);
+  var a = Math.sin(dPhi/2)*Math.sin(dPhi/2) + Math.cos(phi1)*Math.cos(phi2)*Math.sin(dLambda/2)*Math.sin(dLambda/2);
+  var totalDist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  // 지구곡률 보정: 표준 대기 굴절을 반영한 실효 지구반경 k=4/3 모델
+  var kFactor = 4/3;
+  var effR = R * kFactor;
+
+  var curvatureDropAtTx = (totalDist*totalDist) / (2*effR);
+  var heightDiffRaw = txElev - refElev;
+  var heightDiffCorrected = heightDiffRaw - curvatureDropAtTx;
+  var elevAngleDeg = toDeg(Math.atan2(heightDiffCorrected, totalDist));
+
+  var wavelength = 299792458 / (freqMHz*1e6); // m
+
+  var minClearanceRatio = Infinity;
+  var blocked = false;
+  var profilePoints = [];
+
+  for(var j=0; j<elevations.length; j++){
+    var d1 = totalDist * fracs[j];
+    var d2 = totalDist - d1;
+
+    var losLinearElev = refElev + heightDiffRaw * fracs[j];
+    var curvatureDrop = (d1*d2) / (2*effR);
+    var losElevAtPoint = losLinearElev - curvatureDrop;
+
+    var terrainElev = elevations[j];
+    var fresnelR1 = (d1<=0||d2<=0) ? 0 : Math.sqrt(wavelength * d1 * d2 / totalDist);
+    var clearance = losElevAtPoint - terrainElev;
+    var ratio = fresnelR1 > 0 ? clearance/fresnelR1 : (clearance>=0 ? 999 : -999);
+
+    if(ratio < minClearanceRatio) minClearanceRatio = ratio;
+    if(clearance < 0) blocked = true;
+
+    profilePoints.push({
+      dist: d1,
+      terrain: terrainElev,
+      los: losElevAtPoint,
+      fresnel60: losElevAtPoint - fresnelR1*0.6
+    });
+  }
+
+  var verdict;
+  if(blocked){
+    verdict = '❌ 지형에 의해 가시선(LOS) 차단 구간 있음';
+  } else if(minClearanceRatio < 0.6){
+    verdict = '⚠ 프레넬 존 60% 미만 (전파 손실 우려)';
+  } else {
+    verdict = '✅ LOS 확보 · 프레넬 존 60% 이상';
+  }
+
+  document.getElementById('labElevAngle').textContent = elevAngleDeg.toFixed(2) + '°';
+  document.getElementById('labHorizDist').textContent = (totalDist/1000).toFixed(2) + ' km';
+  document.getElementById('labHeightDiff').textContent = heightDiffRaw.toFixed(1) + ' m (곡률보정 후 ' + heightDiffCorrected.toFixed(1) + ' m)';
+  var maxFresnelCenter = Math.sqrt(wavelength * totalDist / 4);
+  document.getElementById('labFresnelMax').textContent = maxFresnelCenter.toFixed(1) + ' m';
+  var minClearanceText;
+  if(minClearanceRatio >= 999) minClearanceText = '충분함 (지형이 LOS보다 훨씬 낮음)';
+  else if(minClearanceRatio <= -999) minClearanceText = '심각 (해당 지점 지형이 입력 고도보다 높음 — 좌표/고도 재확인 필요)';
+  else minClearanceText = (minClearanceRatio*100).toFixed(0) + '%';
+  document.getElementById('labMinClearance').textContent = minClearanceText;
+  document.getElementById('labLosVerdict').textContent = verdict;
+
+  drawTerrainProfile(profilePoints, totalDist);
+
+  statusEl.textContent = 'DEM 조회 완료 (' + elevations.length + '개 지점, Open-Meteo Elevation API 기준 — 실제 지형과 오차가 있을 수 있음)';
+  resultsEl.style.display = 'block';
+}
+
+function drawTerrainProfile(profilePoints, totalDist){
+  var svg = document.getElementById('labProfileSvg');
+  var W = 600, H = 200, padX = 6, padY = 10;
+
+  var allElevs = [];
+  profilePoints.forEach(function(p){
+    allElevs.push(p.terrain, p.los, p.fresnel60);
+  });
+  var minE = Math.min.apply(null, allElevs);
+  var maxE = Math.max.apply(null, allElevs);
+  if(maxE - minE < 1) maxE = minE + 1;
+  var span = maxE - minE;
+  minE -= span*0.08; maxE += span*0.08; // 여백
+
+  function xScale(d){ return padX + (d/totalDist) * (W - 2*padX); }
+  function yScale(e){ return (H-padY) - ((e-minE)/(maxE-minE)) * (H - 2*padY); }
+
+  function pathFor(key){
+    return profilePoints.map(function(p,i){
+      var x = xScale(p.dist), y = yScale(p[key]);
+      return (i===0?'M':'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+  }
+
+  var terrainPath = pathFor('terrain');
+  var terrainFill = terrainPath +
+    ' L' + xScale(totalDist).toFixed(1) + ',' + (H-padY) +
+    ' L' + xScale(0).toFixed(1) + ',' + (H-padY) + ' Z';
+  var losPath = pathFor('los');
+  var fresnelPath = pathFor('fresnel60');
+
+  var html = '';
+  html += '<path d="'+terrainFill+'" fill="#1a2530" stroke="none"/>';
+  html += '<path d="'+terrainPath+'" fill="none" stroke="#7c8a99" stroke-width="1.5"/>';
+  html += '<path d="'+fresnelPath+'" fill="none" stroke="#e0a951" stroke-width="1" stroke-dasharray="4,3"/>';
+  html += '<path d="'+losPath+'" fill="none" stroke="#3ad6c2" stroke-width="2"/>';
+  svg.innerHTML = html;
+}
+
 function calc(){
   var lat1 = getDD('lat1');
   var lon1 = getDD('lon1');
@@ -1433,6 +1669,7 @@ function calc(){
   document.getElementById('weatherInput').value = '';
   clearSiteType();
   clearFreqRows();
+  resetLabCard();
 
   var naverUrl = 'https://map.naver.com/p?c=' + lon2.toFixed(7) + ',' + lat2.toFixed(7) + ',15,0,0,0,dh';
   var kakaoUrl = 'https://map.kakao.com/link/map/발사장소,' + lat2.toFixed(7) + ',' + lon2.toFixed(7);
